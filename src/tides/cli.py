@@ -146,9 +146,7 @@ def format_plain(
     if verbose and result.source_type == Source.NOAA and result.station_name:
         verbose_prefix = f"[NOAA: {result.station_name}, {result.station_distance_km}km] "
     elif verbose and result.source_type == Source.STATION and result.station_name:
-        verbose_prefix = (
-            f"[Station: {result.station_name}, {result.station_distance_km}km] "
-        )
+        verbose_prefix = f"[Station: {result.station_name}, {result.station_distance_km}km] "
     elif verbose and result.source_type == Source.MODEL and result.model_name:
         verbose_prefix = f"[Model: {result.model_name}] "
 
@@ -280,7 +278,7 @@ def get(
         source_enum = Source(source.lower())
     except ValueError:
         print(
-            f"Error: Invalid source '{source}'. Expected: auto, noaa, model",
+            f"Error: Invalid source '{source}'. Expected: auto, noaa, station, model",
             file=sys.stderr,
         )
         raise SystemExit(1)

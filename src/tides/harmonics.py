@@ -19,8 +19,12 @@ _MJD_TIDE = 48622
 
 @functools.cache
 def _known_constituents() -> frozenset[str]:
-    """Get the set of constituent names pyTMD recognizes."""
-    # Test common constituents to build the known set
+    """Get the set of constituent names pyTMD recognizes.
+
+    Tests each candidate against pyTMD's coefficient table. Any constituent
+    not in this list will be silently skipped. Expand this list if new
+    constituents appear in station databases.
+    """
     candidates = [
         "m2",
         "s2",
@@ -115,7 +119,10 @@ def predict_tide_height(
         Predicted height in meters
     """
     if not constituents:
-        return 0.0
+        return datum_offset
+
+    if dt.tzinfo is None:
+        raise ValueError("predict_tide_height requires a timezone-aware datetime")
 
     names, amplitudes, phases_deg = _filter_constituents(constituents)
     if len(names) == 0:

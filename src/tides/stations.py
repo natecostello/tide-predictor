@@ -11,7 +11,7 @@ from pathlib import Path
 
 from tides.harmonics import predict_tides_for_day
 from tides.models import Coordinate, TideEvent
-from tides.noaa import _haversine_km
+from tides.noaa import haversine_km
 
 STATION_DB_URL = "https://raw.githubusercontent.com/openwatersio/tide-database/main/data"
 STATION_INDEX_FILENAME = "station_index.json"
@@ -76,7 +76,7 @@ def find_nearest_station(
     best = None
     best_dist = float("inf")
     for s in index:
-        d = _haversine_km(coord.lat, coord.lon, s["lat"], s["lon"])
+        d = haversine_km(coord.lat, coord.lon, s["lat"], s["lon"])
         if d < best_dist:
             best = s
             best_dist = d
@@ -171,7 +171,10 @@ def download_station_database() -> None:
             if "/data/noaa/" in member or "/data/ticon/" in member:
                 parts = member.split("/data/", 1)
                 if len(parts) == 2 and parts[1]:
-                    target = stations_dir / parts[1]
+                    target = (stations_dir / parts[1]).resolve()
+                    # Zip Slip protection: ensure target is under stations_dir
+                    if not str(target).startswith(str(stations_dir.resolve())):
+                        continue
                     target.parent.mkdir(parents=True, exist_ok=True)
                     target.write_bytes(zf.read(member))
 
@@ -186,7 +189,10 @@ def get_station_index() -> list[dict]:
     """Get the station index, downloading if needed."""
     index_path = _get_index_path()
     if index_path.exists():
-        return json.loads(index_path.read_text())
+        try:
+            return json.loads(index_path.read_text())
+        except (json.JSONDecodeError, ValueError):
+            index_path.unlink(missing_ok=True)
 
     download_station_database()
     return json.loads(index_path.read_text())

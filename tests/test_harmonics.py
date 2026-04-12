@@ -60,9 +60,10 @@ class TestPredictTideHeight:
         h_mllw = predict_tide_height(dt, BERMUDA_CONSTITUENTS, datum_offset=BERMUDA_DATUMS["MLLW"])
         assert abs(h_mllw - h_no_datum - BERMUDA_DATUMS["MLLW"]) < 0.001
 
-    def test_empty_constituents_returns_zero(self):
+    def test_empty_constituents_returns_datum_offset(self):
         dt = datetime.datetime(2026, 4, 15, 12, 0, tzinfo=datetime.timezone.utc)
         assert predict_tide_height(dt, []) == 0.0
+        assert predict_tide_height(dt, [], datum_offset=1.5) == 1.5
 
 
 class TestPredictTidesForDay:
