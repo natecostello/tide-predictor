@@ -32,6 +32,7 @@ _NAME_MAP: dict[str, str] = {
     "rho": "rho1",
     "ep2": "eps2",
     "sgm": "sigma1",
+    "3l2": "l2'",
 }
 
 
