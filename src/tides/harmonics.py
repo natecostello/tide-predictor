@@ -7,6 +7,7 @@ pipeline used by the gridded model path (ocean_model.py).
 
 import datetime
 import functools
+import sys
 
 import numpy as np
 import pyTMD.constituents
@@ -29,6 +30,8 @@ STATION_CORRECTIONS = "OTIS"
 _NAME_MAP: dict[str, str] = {
     "lam2": "lambda2",
     "rho": "rho1",
+    "ep2": "eps2",
+    "sgm": "sigma1",
 }
 
 
@@ -56,16 +59,25 @@ def _build_dataset(constituents: list[dict]) -> xr.Dataset:
     This matches the format produced by pyTMD's model.open_dataset().tmd.interp().
     """
     data_vars = {}
+    skipped = []
     for c in constituents:
         name = _normalize_name(c["name"].lower())
         amp = c["amplitude"]
         if amp <= 0:
             continue
         if not _is_recognized(name):
+            skipped.append((c["name"], amp))
             continue
         phase_rad = np.radians(c["phase"])
         z = amp * np.exp(-1j * phase_rad)
         data_vars[name] = xr.Variable((), np.complex64(z))
+
+    if skipped:
+        names = ", ".join(f"{n} ({a:.4f}m)" for n, a in skipped)
+        print(
+            f"Warning: skipped {len(skipped)} unrecognized constituent(s): {names}",
+            file=sys.stderr,
+        )
 
     return xr.Dataset(data_vars)
 
