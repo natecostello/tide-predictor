@@ -155,7 +155,16 @@ def download_station_database() -> None:
     archive_url = "https://github.com/openwatersio/tide-database/archive/refs/heads/main.zip"
     print("Downloading global tide station database (~50MB)...", file=sys.stderr)
 
-    with httpx.stream("GET", archive_url, timeout=120, follow_redirects=True) as response:
+    try:
+        response_ctx = httpx.stream("GET", archive_url, timeout=120, follow_redirects=True)
+    except (httpx.ConnectError, httpx.TimeoutException) as e:
+        print(
+            "Error: Could not download station database. Check your internet connection.",
+            file=sys.stderr,
+        )
+        raise SystemExit(2) from e
+
+    with response_ctx as response:
         response.raise_for_status()
         data = io.BytesIO()
         for chunk in response.iter_bytes():
@@ -172,8 +181,10 @@ def download_station_database() -> None:
                 parts = member.split("/data/", 1)
                 if len(parts) == 2 and parts[1]:
                     target = (stations_dir / parts[1]).resolve()
-                    # Zip Slip protection: ensure target is under stations_dir
-                    if not str(target).startswith(str(stations_dir.resolve())):
+                    # Zip Slip protection
+                    try:
+                        target.relative_to(stations_dir.resolve())
+                    except ValueError:
                         continue
                     target.parent.mkdir(parents=True, exist_ok=True)
                     target.write_bytes(zf.read(member))

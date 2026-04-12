@@ -196,7 +196,7 @@ def format_json(
         tz_name = get_timezone_name(result.coordinate) or "UTC"
 
     source_obj: dict = {"type": result.source_type.value}
-    if result.source_type == Source.NOAA and result.station_id:
+    if result.source_type in (Source.NOAA, Source.STATION) and result.station_id:
         source_obj["station"] = {
             "id": result.station_id,
             "name": result.station_name,
