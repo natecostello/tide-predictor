@@ -8,6 +8,11 @@ from tides.models import Coordinate, TideEvent
 MODEL_NAME = "GOT5.6"
 ELEVATION_INTERVAL_MINUTES = 6
 
+# Minimum separation between peaks in minutes. Tidal extrema are typically
+# ~6 hours apart; 2 hours is a conservative minimum to filter noise.
+_MIN_PEAK_SEPARATION_MINUTES = 120
+_MIN_PEAK_DISTANCE = _MIN_PEAK_SEPARATION_MINUTES // ELEVATION_INTERVAL_MINUTES
+
 
 def find_extrema(
     times: list[datetime.datetime],
@@ -17,8 +22,8 @@ def find_extrema(
         return []
 
     # Find highs (peaks) and lows (troughs)
-    highs, _ = find_peaks(elevations, distance=20)
-    lows, _ = find_peaks(-elevations, distance=20)
+    highs, _ = find_peaks(elevations, distance=_MIN_PEAK_DISTANCE)
+    lows, _ = find_peaks(-elevations, distance=_MIN_PEAK_DISTANCE)
 
     events = []
     for i in highs:
