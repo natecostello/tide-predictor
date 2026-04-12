@@ -52,11 +52,11 @@ class TestParseDateArg:
         assert begin == datetime.date(2026, 4, 15)
         assert end == datetime.date(2026, 4, 17)
 
-    def test_none_defaults_to_today(self):
+    def test_none_defaults_to_today_utc(self):
         begin, end = parse_date_arg(None)
-        today = datetime.date.today()
-        assert begin == today
-        assert end == today
+        today_utc = datetime.datetime.now(tz=datetime.timezone.utc).date()
+        assert begin == today_utc
+        assert end == today_utc
 
     def test_invalid_date(self):
         with pytest.raises(SystemExit):

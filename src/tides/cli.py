@@ -44,17 +44,27 @@ def parse_coordinate(args: list[str]) -> Coordinate:
         if len(parts) == 2:
             try:
                 lat, lon = float(parts[0]), float(parts[1])
-                return Coordinate(lat=lat, lon=lon)
-            except ValueError:
+            except (ValueError, TypeError):
                 pass
+            else:
+                try:
+                    return Coordinate(lat=lat, lon=lon)
+                except ValueError as e:
+                    print(f"Error: {e}", file=sys.stderr)
+                    raise SystemExit(1)
 
     # Try as two separate float args
     if len(args) == 2:
         try:
             lat, lon = float(args[0]), float(args[1])
-            return Coordinate(lat=lat, lon=lon)
-        except ValueError:
+        except (ValueError, TypeError):
             pass
+        else:
+            try:
+                return Coordinate(lat=lat, lon=lon)
+            except ValueError as e:
+                print(f"Error: {e}", file=sys.stderr)
+                raise SystemExit(1)
 
     print(
         "Error: Could not parse coordinates. Expected: lat,lon (e.g. 40.7128,-74.0060)",
@@ -65,7 +75,7 @@ def parse_coordinate(args: list[str]) -> Coordinate:
 
 def parse_date_arg(date_str: str | None) -> tuple[datetime.date, datetime.date]:
     if date_str is None:
-        today = datetime.date.today()
+        today = datetime.datetime.now(tz=datetime.timezone.utc).date()
         return today, today
 
     if ":" in date_str:
