@@ -285,9 +285,8 @@ def main(
         )
         raise SystemExit(1)
 
-    from tides.resolver import resolve_tides
-
     from tides.noaa import NOAAError
+    from tides.resolver import resolve_tides
 
     try:
         result = resolve_tides(coord, begin_date, end_date, source_enum)
