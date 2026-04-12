@@ -44,9 +44,10 @@ class TestResolveNoaa:
         assert len(result.days) == 1
         assert len(result.days[0].events) == 2
 
+    @patch("tides.resolver._resolve_station", return_value=None)
     @patch("tides.resolver.compute_tides")
     @patch("tides.resolver.get_stations")
-    def test_auto_falls_back_to_model(self, mock_get_stations, mock_compute):
+    def test_auto_falls_back_to_model(self, mock_get_stations, mock_compute, mock_station):
         mock_get_stations.return_value = SAMPLE_STATIONS
         mock_compute.return_value = SAMPLE_NOAA_EVENTS
 

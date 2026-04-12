@@ -5,12 +5,15 @@ from tides.cache import get_stations
 from tides.models import Coordinate, Source, TideDay, TideEvent, TideResult
 from tides.noaa import (
     fetch_predictions,
-    find_nearest_station,
     parse_predictions_response,
+)
+from tides.noaa import (
+    find_nearest_station as find_nearest_noaa_station,
 )
 from tides.ocean_model import DEFAULT_MODEL, compute_tides
 
-MAX_STATION_DISTANCE_KM = 25.0
+MAX_NOAA_DISTANCE_KM = 25.0
+MAX_STATION_DISTANCE_KM = 200.0
 
 
 def _group_events_by_date(
@@ -40,9 +43,9 @@ def _resolve_noaa(
     begin_date: datetime.date,
     end_date: datetime.date,
     stations: list[dict],
-    max_distance_km: float = MAX_STATION_DISTANCE_KM,
+    max_distance_km: float = MAX_NOAA_DISTANCE_KM,
 ) -> TideResult | None:
-    result = find_nearest_station(stations, coord, max_distance_km)
+    result = find_nearest_noaa_station(stations, coord, max_distance_km)
     if result is None:
         return None
 
@@ -56,6 +59,43 @@ def _resolve_noaa(
         source_type=Source.NOAA,
         station_id=station["id"],
         station_name=station["name"],
+        station_distance_km=round(distance, 1),
+        model_name=None,
+        days=days,
+    )
+
+
+def _resolve_station(
+    coord: Coordinate,
+    begin_date: datetime.date,
+    end_date: datetime.date,
+    max_distance_km: float = MAX_STATION_DISTANCE_KM,
+) -> TideResult | None:
+    from tides.stations import (
+        find_nearest_station,
+        get_station_index,
+        load_station,
+        predict_station_tides,
+    )
+
+    index = get_station_index()
+    result = find_nearest_station(index, coord, max_distance_km)
+    if result is None:
+        return None
+
+    entry, distance = result
+    station = load_station(entry)
+    events = predict_station_tides(station, begin_date, end_date)
+    if not events:
+        return None
+
+    days = _group_events_by_date(events, begin_date, end_date)
+
+    return TideResult(
+        coordinate=coord,
+        source_type=Source.STATION,
+        station_id=entry["id"],
+        station_name=station.get("name", entry["name"]),
         station_distance_km=round(distance, 1),
         model_name=None,
         days=days,
@@ -100,9 +140,20 @@ def resolve_tides(
         stations = get_stations()
         result = _resolve_noaa(coord, begin_date, end_date, stations)
         if result is None:
-            dist = MAX_STATION_DISTANCE_KM
+            dist = MAX_NOAA_DISTANCE_KM
             print(
                 f"Error: No NOAA tide station found within {dist:.0f}km of this location.",
+                file=sys.stderr,
+            )
+            raise SystemExit(1)
+        return result
+
+    if source == Source.STATION:
+        result = _resolve_station(coord, begin_date, end_date)
+        if result is None:
+            dist = MAX_STATION_DISTANCE_KM
+            print(
+                f"Error: No tide station found within {dist:.0f}km of this location.",
                 file=sys.stderr,
             )
             raise SystemExit(1)
@@ -111,9 +162,15 @@ def resolve_tides(
     if source == Source.MODEL:
         return _resolve_model(coord, begin_date, end_date, model_name=model_name)
 
-    # AUTO: try NOAA first, fall back to model
+    # AUTO: try NOAA API first (most accurate for US), then global station
+    # database (harmonic prediction), then model fallback
     stations = get_stations()
     noaa_result = _resolve_noaa(coord, begin_date, end_date, stations)
     if noaa_result is not None:
         return noaa_result
+
+    station_result = _resolve_station(coord, begin_date, end_date)
+    if station_result is not None:
+        return station_result
+
     return _resolve_model(coord, begin_date, end_date, model_name=model_name)

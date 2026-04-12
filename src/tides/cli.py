@@ -257,7 +257,9 @@ def get(
         None, "--between", "-b", help="Time filter: HH:MM:HH:MM"
     ),
     precision: int = typer.Option(1, "--precision", "-p", help="Decimal places for height"),
-    source: str = typer.Option("auto", "--source", "-s", help="Data source: auto, noaa, model"),
+    source: str = typer.Option(
+        "auto", "--source", "-s", help="Data source: auto, noaa, station, model"
+    ),
     model: str = typer.Option("got5.6", "--model", "-m", help="Tide model: got5.6, eot20"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Show source details"),
 ) -> None:
