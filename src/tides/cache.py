@@ -18,14 +18,15 @@ PYTMD_MODEL_DIRS: dict[str, str] = {
 }
 
 
-def get_cache_dir() -> Path:
+def get_cache_dir(create: bool = True) -> Path:
     xdg = os.environ.get("XDG_CACHE_HOME")
     if xdg:
         base = Path(xdg)
     else:
         base = Path.home() / ".cache"
     cache_dir = base / "tides"
-    cache_dir.mkdir(parents=True, exist_ok=True)
+    if create:
+        cache_dir.mkdir(parents=True, exist_ok=True)
     return cache_dir
 
 
@@ -232,12 +233,12 @@ def _format_size(size_bytes: int) -> str:
 
 def get_cache_info() -> dict:
     """Return structured cache information for both app and model caches."""
-    app_dir = get_cache_dir()
+    app_dir = get_cache_dir(create=False)
     pytmd_dir = _get_pytmd_data_dir()
 
     # App cache breakdown
     stations_dir = app_dir / "stations"
-    noaa_stations_path = get_station_cache_path()
+    noaa_stations_path = app_dir / STATION_CACHE_FILENAME
 
     app_items = []
     if noaa_stations_path.exists():
