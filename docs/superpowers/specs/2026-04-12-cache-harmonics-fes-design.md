@@ -11,7 +11,7 @@ Three features in one PR. All additive; no breaking changes.
 
 New Typer sub-app at `tides cache` with two commands:
 
-**`tides cache show`** (default when running bare `tides cache`):
+**`tides cache`** (default action, implemented as callback):
 - Lists both cache locations with sizes:
   - App cache (`~/.cache/tides/`): station index, NOAA stations, station database
   - Model cache (`~/Library/Caches/pytmd/` via platformdirs): GOT5.5, GOT5.6, EOT20, FES2022, HAMTIDE11
@@ -26,7 +26,7 @@ New Typer sub-app at `tides cache` with two commands:
 
 ### Files Changed
 - `src/tides/cli.py` — add `cache_app` Typer sub-app
-- `src/tides/cache.py` — add `get_pytmd_data_dir()` (make public), `get_cache_info()`, `clear_cache()` functions
+- `src/tides/cache.py` — add `get_cache_info()`, `clear_cache()`, `format_size()` functions
 
 ## 2. Replace Hand-Rolled Harmonics with pyTMD
 
