@@ -19,6 +19,7 @@ class TestNOAAIntegration:
         result = subprocess.run(
             [
                 "tides",
+                "get",
                 "40.7006,-74.0142",
                 "--date",
                 "2026-04-15",
@@ -40,6 +41,7 @@ class TestNOAAIntegration:
         result = subprocess.run(
             [
                 "tides",
+                "get",
                 "40.7006,-74.0142",
                 "--date",
                 "2026-04-15",
@@ -61,6 +63,7 @@ class TestModelIntegration:
         result = subprocess.run(
             [
                 "tides",
+                "get",
                 "-8.05,-34.87",
                 "--date",
                 "2026-04-15",
@@ -84,6 +87,7 @@ class TestCLIFlags:
         result = subprocess.run(
             [
                 "tides",
+                "get",
                 "40.7006,-74.0142",
                 "--date",
                 "2026-04-15",
@@ -104,6 +108,7 @@ class TestCLIFlags:
         result = subprocess.run(
             [
                 "tides",
+                "get",
                 "40.7006,-74.0142",
                 "--date",
                 "2026-04-15",
@@ -122,6 +127,7 @@ class TestCLIFlags:
         result = subprocess.run(
             [
                 "tides",
+                "get",
                 "40.7006,-74.0142",
                 "--date",
                 "2026-04-15:2026-04-16",

@@ -11,17 +11,7 @@ from tides.models import Coordinate, Source, TideResult
 
 app = typer.Typer(
     name="tides",
-    help=(
-        "Tide predictions for any coastal coordinate.\n\n"
-        "Examples:\n\n"
-        "  tides 40.7128,-74.0060\n\n"
-        "  tides 40.7128,-74.0060 --date 2026-04-15\n\n"
-        "  tides 35.9,-75.6 --local --feet\n\n"
-        "https://github.com/natecostello/tide-predictor"
-    ),
     add_completion=False,
-    invoke_without_command=True,
-    context_settings={"allow_interspersed_args": True},
 )
 
 
@@ -253,12 +243,9 @@ def format_json(
     return json.dumps(output, indent=2)
 
 
-@app.callback()
-def main(
-    ctx: typer.Context,
-    coordinate: Optional[list[str]] = typer.Argument(
-        None, help="Latitude,longitude (e.g. 40.7128,-74.0060)"
-    ),
+@app.command()
+def get(
+    coordinate: str = typer.Argument(..., help="Latitude,longitude (e.g. 40.7128,-74.0060)"),
     date: Optional[str] = typer.Option(
         None, "--date", "-d", help="Date or range: YYYY-MM-DD or YYYY-MM-DD:YYYY-MM-DD"
     ),
@@ -271,26 +258,9 @@ def main(
     precision: int = typer.Option(1, "--precision", "-p", help="Decimal places for height"),
     source: str = typer.Option("auto", "--source", "-s", help="Data source: auto, noaa, model"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Show source details"),
-    version: bool = typer.Option(False, "--version", help="Show version"),
 ) -> None:
-    """Tide predictions for any coastal coordinate."""
-    if version:
-        print(f"tides {__version__}")
-        raise typer.Exit()
-
-    # If a subcommand is being invoked, let it run
-    if ctx.invoked_subcommand is not None:
-        return
-
-    # Typer may pass subcommand names as positional args — bail if so
-    if coordinate and coordinate[0] in ("fetch-model",):
-        return
-
-    if not coordinate:
-        print(ctx.get_help())
-        raise typer.Exit()
-
-    coord = parse_coordinate(coordinate)
+    """Get tide predictions for a coastal coordinate."""
+    coord = parse_coordinate([coordinate])
     begin_date, end_date = parse_date_arg(date)
     between_times = parse_between(between)
 
@@ -369,3 +339,29 @@ def fetch_model() -> None:
             file=sys.stderr,
         )
         raise SystemExit(2)
+
+
+def version_callback(value: bool) -> None:
+    if value:
+        print(f"tides {__version__}")
+        raise typer.Exit()
+
+
+@app.callback()
+def main(
+    version: bool = typer.Option(
+        False, "--version", callback=version_callback, is_eager=True, help="Show version"
+    ),
+) -> None:
+    """Tide predictions for any coastal coordinate.
+
+    Examples:
+
+      tides get 40.7128,-74.0060
+
+      tides get 40.7128,-74.0060 --date 2026-04-15
+
+      tides get 35.9,-75.6 --local --feet
+
+    https://github.com/natecostello/tide-predictor
+    """

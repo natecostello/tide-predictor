@@ -2,6 +2,7 @@ import pytest
 
 from tides.models import Coordinate
 from tides.noaa import (
+    NOAAError,
     find_nearest_station,
     parse_predictions_response,
     parse_station_list,
@@ -73,3 +74,86 @@ class TestParsePredictionsResponse:
         assert events[0].time.minute == 18
         assert events[1].height == pytest.approx(0.012)
         assert events[3].height == pytest.approx(-0.067)
+
+
+class TestParsePredictionsResponseErrors:
+    def test_noaa_error_response(self):
+        data = {"error": {"message": "Station not found"}}
+        with pytest.raises(NOAAError, match="NOAA API error: Station not found"):
+            parse_predictions_response(data)
+
+    def test_noaa_error_no_message(self):
+        data = {"error": {}}
+        with pytest.raises(NOAAError, match="Unknown NOAA API error"):
+            parse_predictions_response(data)
+
+    def test_empty_predictions(self):
+        data = {"predictions": []}
+        with pytest.raises(NOAAError):
+            parse_predictions_response(data)
+
+    def test_null_predictions(self):
+        data = {}
+        with pytest.raises(NOAAError):
+            parse_predictions_response(data)
+
+
+class TestParseStationListIncomplete:
+    def test_skips_station_missing_lat(self):
+        xml = """<?xml version="1.0" encoding="utf-8" ?>
+<Stations>
+  <count>1</count>
+  <Station>
+    <id>1234567</id>
+    <name>No Lat Station</name>
+    <lng>-74.0142</lng>
+  </Station>
+</Stations>"""
+        stations = parse_station_list(xml)
+        assert len(stations) == 0
+
+    def test_mixed_complete_and_incomplete(self):
+        xml = """<?xml version="1.0" encoding="utf-8" ?>
+<Stations>
+  <count>2</count>
+  <Station>
+    <id>8518750</id>
+    <name>The Battery</name>
+    <lat>40.7006</lat>
+    <lng>-74.0142</lng>
+  </Station>
+  <Station>
+    <id>9999999</id>
+    <name>Missing Lng</name>
+    <lat>39.0</lat>
+  </Station>
+</Stations>"""
+        stations = parse_station_list(xml)
+        assert len(stations) == 1
+        assert stations[0]["id"] == "8518750"
+
+
+class TestFindNearestStationEdgeCases:
+    def test_empty_station_list(self):
+        coord = Coordinate(lat=40.7128, lon=-74.0060)
+        result = find_nearest_station([], coord)
+        assert result is None
+
+    def test_single_station_within_range(self):
+        stations = [
+            {"id": "8518750", "name": "The Battery", "lat": 40.7006, "lon": -74.0142},
+        ]
+        coord = Coordinate(lat=40.7128, lon=-74.0060)
+        result = find_nearest_station(stations, coord)
+        assert result is not None
+        station, distance = result
+        assert station["id"] == "8518750"
+        assert distance < 25.0
+
+    def test_single_station_outside_range(self):
+        stations = [
+            {"id": "8518750", "name": "The Battery", "lat": 40.7006, "lon": -74.0142},
+        ]
+        coord = Coordinate(lat=0.0, lon=0.0)
+        result = find_nearest_station(stations, coord, max_distance_km=25.0)
+        assert result is None

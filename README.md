@@ -20,31 +20,29 @@ uv venv && uv pip install -e ".[dev]"
 
 ```bash
 # Today's tides at a location
-tides 40.7128,-74.0060
+tides get 40.7128,-74.0060
 
 # Specific date
-tides 40.7128,-74.0060 --date 2026-04-15
+tides get 40.7128,-74.0060 --date 2026-04-15
 
 # Date range with local times and feet
-tides 35.9,-75.6 --date 2026-04-15:2026-04-17 --local --feet
+tides get 35.9,-75.6 --date 2026-04-15:2026-04-17 --local --feet
 
 # JSON output
-tides 40.7128,-74.0060 --json
+tides get 40.7128,-74.0060 --json
 
 # Only daytime tides
-tides 40.7128,-74.0060 --between 06:00:18:00
+tides get 40.7128,-74.0060 --between 06:00:18:00
 
 # Force NOAA station data
-tides 40.7128,-74.0060 --source noaa
+tides get 40.7128,-74.0060 --source noaa
 
 # Force global model
-tides -8.05,-34.87 --source model
+tides get -8.05,-34.87 --source model
 
 # Pre-download model data
 tides fetch-model
 ```
-
-**Note:** Always use the comma-separated coordinate form (`40.7128,-74.0060`). Space-separated coordinates with negative longitude values are not supported due to CLI argument parsing limitations.
 
 ## Options
 
