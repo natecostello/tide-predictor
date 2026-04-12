@@ -73,7 +73,16 @@ def compute_tides(
     m = pyTMD.io.model()
     m.from_database(model_name)
     pad = 2.0  # degrees padding around target for interpolation
-    bounds = [coord.lon - pad, coord.lon + pad, coord.lat - pad, coord.lat + pad]
+    lat_min = max(coord.lat - pad, -90.0)
+    lat_max = min(coord.lat + pad, 90.0)
+    lon_min = coord.lon - pad
+    lon_max = coord.lon + pad
+    # Normalize longitude to [-180, 360] range for pyTMD compatibility
+    if lon_min < -180:
+        lon_min += 360
+    if lon_max > 360:
+        lon_max -= 360
+    bounds = [lon_min, lon_max, lat_min, lat_max]
     ds = m.open_dataset(crop=True, bounds=bounds)
     local = ds.tmd.interp(x=coord.lon, y=coord.lat, extrapolate=True, cutoff=10)
 
