@@ -188,6 +188,26 @@ class TestComputeTides:
     @patch("pyTMD.predict.time_series")
     @patch("pyTMD.io.model")
     @patch("tides.cache.ensure_model_data")
+    def test_compute_tides_crops_dataset(
+        self, mock_ensure, mock_model_cls, mock_predict, mock_infer
+    ):
+        """open_dataset must use crop=True with bounds around the coordinate."""
+        self._setup_pytmd_mocks(mock_ensure, mock_model_cls, mock_predict, mock_infer)
+        coord = Coordinate(lat=40.7, lon=-74.0)
+        compute_tides(coord, datetime.date(2025, 12, 3), datetime.date(2025, 12, 3))
+        mock_instance = mock_model_cls.return_value
+        _, kwargs = mock_instance.open_dataset.call_args
+        assert kwargs.get("crop") is True
+        bounds = kwargs.get("bounds")
+        assert bounds is not None
+        # Bounds should contain the coordinate
+        assert bounds[0] < coord.lon < bounds[1]
+        assert bounds[2] < coord.lat < bounds[3]
+
+    @patch("pyTMD.predict.infer_minor")
+    @patch("pyTMD.predict.time_series")
+    @patch("pyTMD.io.model")
+    @patch("tides.cache.ensure_model_data")
     def test_compute_tides_accepts_model_name(
         self, mock_ensure, mock_model_cls, mock_predict, mock_infer
     ):
@@ -200,6 +220,21 @@ class TestComputeTides:
             model_name="EOT20",
         )
         mock_model_cls.return_value.from_database.assert_called_once_with("EOT20")
+
+    @patch("pyTMD.predict.infer_minor")
+    @patch("pyTMD.predict.time_series")
+    @patch("pyTMD.io.model")
+    @patch("tides.cache.ensure_model_data")
+    def test_compute_tides_fes2022(self, mock_ensure, mock_model_cls, mock_predict, mock_infer):
+        """FES2022 model name is passed through correctly."""
+        self._setup_pytmd_mocks(mock_ensure, mock_model_cls, mock_predict, mock_infer)
+        compute_tides(
+            Coordinate(lat=40.7, lon=-74.0),
+            datetime.date(2025, 12, 3),
+            datetime.date(2025, 12, 3),
+            model_name="FES2022",
+        )
+        mock_model_cls.return_value.from_database.assert_called_once_with("FES2022")
 
     @patch("pyTMD.predict.infer_minor")
     @patch("pyTMD.predict.time_series")

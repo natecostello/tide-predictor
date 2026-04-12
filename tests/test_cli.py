@@ -452,3 +452,77 @@ class TestFetchModelCommand:
         mock_fetch_all.side_effect = RuntimeError("unexpected")
         result = runner.invoke(app, ["fetch-model"])
         assert result.exit_code == 2
+
+
+class TestCacheShowCommand:
+    @patch("tides.cache.get_cache_info")
+    def test_cache_show_plain(self, mock_info):
+        mock_info.return_value = {
+            "app_cache": {
+                "path": "/fake/app",
+                "items": [
+                    {"name": "NOAA station list", "path": "/fake/app/noaa.json", "size": 1024}
+                ],
+            },
+            "model_cache": {
+                "path": "/fake/pytmd",
+                "items": [{"name": "GOT5.6", "path": "/fake/pytmd/GOT5.6", "size": 100_000_000}],
+            },
+        }
+        result = runner.invoke(app, ["cache"])
+        assert result.exit_code == 0
+        assert "App cache" in result.output
+        assert "GOT5.6" in result.output
+        assert "Total" in result.output
+
+    @patch("tides.cache.get_cache_info")
+    def test_cache_show_json(self, mock_info):
+        mock_info.return_value = {
+            "app_cache": {"path": "/fake", "items": []},
+            "model_cache": {"path": "/fake", "items": []},
+        }
+        result = runner.invoke(app, ["cache", "--json"])
+        assert result.exit_code == 0
+        parsed = json_module.loads(result.output)
+        assert "app_cache" in parsed
+
+    @patch("tides.cache.get_cache_info")
+    def test_cache_show_empty(self, mock_info):
+        mock_info.return_value = {
+            "app_cache": {"path": "/fake", "items": []},
+            "model_cache": {"path": "/fake", "items": []},
+        }
+        result = runner.invoke(app, ["cache"])
+        assert result.exit_code == 0
+        assert "(empty)" in result.output
+
+
+class TestCacheClearCommand:
+    @patch("tides.cache.clear_cache")
+    def test_clear_with_yes_flag(self, mock_clear):
+        mock_clear.return_value = 5000
+        result = runner.invoke(app, ["cache", "clear", "got5.6", "--yes"])
+        assert result.exit_code == 0
+        assert "Cleared" in result.output
+        mock_clear.assert_called_once_with("got5.6")
+
+    @patch("tides.cache.clear_cache")
+    def test_clear_all_with_yes(self, mock_clear):
+        mock_clear.return_value = 10_000_000
+        result = runner.invoke(app, ["cache", "clear", "--yes"])
+        assert result.exit_code == 0
+        assert "all cached data" in result.output
+
+    @patch("tides.cache.clear_cache")
+    def test_clear_invalid_name(self, mock_clear):
+        mock_clear.side_effect = ValueError("Unknown cache name 'bogus'")
+        result = runner.invoke(app, ["cache", "clear", "bogus", "--yes"])
+        assert result.exit_code == 1
+        assert "Unknown cache name" in result.output
+
+    @patch("tides.cache.clear_cache")
+    def test_clear_cancelled(self, mock_clear):
+        result = runner.invoke(app, ["cache", "clear", "got5.6"], input="n\n")
+        assert result.exit_code == 0
+        assert "Cancelled" in result.output
+        mock_clear.assert_not_called()

@@ -6,7 +6,7 @@ from scipy.signal import find_peaks
 from tides.models import Coordinate, TideEvent
 
 DEFAULT_MODEL = "GOT5.6"
-SUPPORTED_MODELS = {"GOT5.6", "GOT5.5", "EOT20"}
+SUPPORTED_MODELS = {"GOT5.6", "GOT5.5", "EOT20", "FES2022"}
 ELEVATION_INTERVAL_MINUTES = 6
 
 # Minimum separation between peaks in minutes. Tidal extrema are typically
@@ -68,10 +68,13 @@ def compute_tides(
     # pyTMD predict.time_series expects days since 1992-01-01
     t = np.array([(dt - _PYTMD_PREDICT_EPOCH).total_seconds() / 86400.0 for dt in times])
 
-    # Load model and interpolate constituents at the coordinate
+    # Load model and interpolate constituents at the coordinate.
+    # Use crop with bounds for large models (FES2022 is 16 GB uncropped).
     m = pyTMD.io.model()
     m.from_database(model_name)
-    ds = m.open_dataset(crop=False)
+    pad = 2.0  # degrees padding around target for interpolation
+    bounds = [coord.lon - pad, coord.lon + pad, coord.lat - pad, coord.lat + pad]
+    ds = m.open_dataset(crop=True, bounds=bounds)
     local = ds.tmd.interp(x=coord.lon, y=coord.lat, extrapolate=True, cutoff=10)
 
     # Predict tidal time series using the model's correction type
