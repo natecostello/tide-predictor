@@ -41,7 +41,7 @@ class TestBuildDataset:
 
     def test_amplitude_preserved(self):
         ds = _build_dataset([{"name": "M2", "amplitude": 0.5, "phase": 0.0}])
-        assert abs(complex(ds["m2"].values)) - 0.5 < 0.001
+        assert abs(abs(complex(ds["m2"].values)) - 0.5) < 0.001
 
     def test_phase_preserved(self):
         ds = _build_dataset([{"name": "M2", "amplitude": 1.0, "phase": 90.0}])

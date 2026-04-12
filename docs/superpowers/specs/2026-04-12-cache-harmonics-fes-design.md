@@ -64,15 +64,15 @@ FES2022b data (34 constituents, 5 GB on disk) is downloaded but not wired into t
 
 **User-facing name**: `--model fes2022` (maps to pyTMD's `FES2022` database key)
 
-**Performance**: FES2022 is 16 GB uncompressed in memory. The current `crop=False` approach is unusable. Change `compute_tides()` to use `crop=True` with a bounding box around the target coordinate (1-degree padding). This applies to ALL models (minor improvement for GOT/EOT20, critical for FES2022).
+**Performance**: FES2022 is 16 GB uncompressed in memory. The current `crop=False` approach is unusable. Change `compute_tides()` to use `crop=True` with a bounding box around the target coordinate (2-degree padding). Falls back to `crop=False` near the antimeridian. This applies to ALL models (minor improvement for GOT/EOT20, critical for FES2022).
 
 **No auto-download**: Unlike GOT (which has `pyTMD.datasets.fetch_gsfc_got()`), FES2022 has no automated download in pyTMD. `ensure_model_data()` will detect if FES2022 is missing and print instructions for manual download from AVISO.
 
-**HAMTIDE11**: Also wire up since data is already present. User-facing: `--model hamtide11`.
+**HAMTIDE11**: Deferred — data exists on disk but file naming convention doesn't match pyTMD's expected format (`*.hamtide11a.nc` vs `HAMcurrent11a_*.nc.gz`). Needs separate investigation.
 
 ### Files Changed
-- `src/tides/ocean_model.py` — add FES2022/HAMTIDE11 to `SUPPORTED_MODELS`, add cropping with bounds
-- `src/tides/cache.py` — handle FES2022/HAMTIDE11 in `ensure_model_data()`
+- `src/tides/ocean_model.py` — add FES2022 to `SUPPORTED_MODELS`, add cropping with bounds
+- `src/tides/cache.py` — handle FES2022 in `ensure_model_data()`
 
 ## Testing Strategy
 
