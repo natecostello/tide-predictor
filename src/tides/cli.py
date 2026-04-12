@@ -286,10 +286,15 @@ def main(
 
     from tides.resolver import resolve_tides
 
+    from tides.noaa import NOAAError
+
     try:
         result = resolve_tides(coord, begin_date, end_date, source_enum)
     except SystemExit:
         raise
+    except NOAAError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        raise SystemExit(2)
     except httpx.HTTPStatusError:
         print(
             "Error: Could not fetch tide data from NOAA. The service may be unavailable.",

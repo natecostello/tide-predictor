@@ -90,9 +90,22 @@ def fetch_predictions(
     return response.json()
 
 
+class NOAAError(Exception):
+    pass
+
+
 def parse_predictions_response(data: dict) -> list[TideEvent]:
+    # NOAA returns {"error": {"message": "..."}} on failure
+    if "error" in data:
+        msg = data["error"].get("message", "Unknown NOAA API error")
+        raise NOAAError(f"NOAA API error: {msg}")
+
+    predictions = data.get("predictions")
+    if predictions is None or len(predictions) == 0:
+        raise NOAAError("NOAA returned no tide predictions for this station and date range.")
+
     events = []
-    for p in data.get("predictions", []):
+    for p in predictions:
         time = datetime.datetime.strptime(p["t"], "%Y-%m-%d %H:%M")
         time = time.replace(tzinfo=datetime.timezone.utc)
         height = float(p["v"])
