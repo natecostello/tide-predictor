@@ -417,17 +417,18 @@ def cache_clear(
 
     target = "all cached data" if name is None else f"'{name}' cache"
 
-    if not yes:
-        confirm = input(f"Clear {target}? [y/N] ")
-        if confirm.lower() not in ("y", "yes"):
-            print("Cancelled.")
-            raise SystemExit(0)
+    if not yes and not typer.confirm(f"Clear {target}?", default=False):
+        print("Cancelled.")
+        raise typer.Exit(code=0)
 
     try:
         freed = clear_cache(name)
     except ValueError as e:
         print(f"Error: {e}", file=sys.stderr)
         raise SystemExit(1)
+    except OSError as e:
+        print(f"Error clearing {target}: {e}", file=sys.stderr)
+        raise SystemExit(2)
 
     print(f"Cleared {target} ({_format_size(freed)} freed).")
 

@@ -526,3 +526,10 @@ class TestCacheClearCommand:
         assert result.exit_code == 0
         assert "Cancelled" in result.output
         mock_clear.assert_not_called()
+
+    @patch("tides.cache.clear_cache")
+    def test_clear_os_error(self, mock_clear):
+        mock_clear.side_effect = OSError("Permission denied")
+        result = runner.invoke(app, ["cache", "clear", "got5.6", "--yes"])
+        assert result.exit_code == 2
+        assert "Permission denied" in result.output
