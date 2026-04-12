@@ -145,6 +145,10 @@ def format_plain(
     verbose_prefix = ""
     if verbose and result.source_type == Source.NOAA and result.station_name:
         verbose_prefix = f"[NOAA: {result.station_name}, {result.station_distance_km}km] "
+    elif verbose and result.source_type == Source.STATION and result.station_name:
+        verbose_prefix = (
+            f"[Station: {result.station_name}, {result.station_distance_km}km] "
+        )
     elif verbose and result.source_type == Source.MODEL and result.model_name:
         verbose_prefix = f"[Model: {result.model_name}] "
 
