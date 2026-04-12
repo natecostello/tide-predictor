@@ -63,7 +63,7 @@ tides cache clear eot20 --yes
 | `--json` | `-j` | JSON output |
 | `--between` | `-b` | Time window filter (HH:MM:HH:MM) |
 | `--precision` | `-p` | Decimal places for height (default: 1) |
-| `--source` | `-s` | Data source: auto, noaa, model (default: auto) |
+| `--source` | `-s` | Data source: auto, noaa, station, model (default: auto) |
 | `--model` | `-m` | Tide model: got5.6, eot20, fes2022 (default: got5.6) |
 | `--verbose` | `-v` | Show source details |
 | `--version` | | Show version |
