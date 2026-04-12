@@ -7,7 +7,7 @@ from tides.models import Coordinate, TideEvent
 
 DEFAULT_MODEL = "GOT5.6"
 SUPPORTED_MODELS = {"GOT5.6", "GOT5.5", "EOT20", "FES2022"}
-ELEVATION_INTERVAL_MINUTES = 6
+ELEVATION_INTERVAL_MINUTES = 1
 
 # Minimum separation between peaks in minutes. Tidal extrema are typically
 # ~6 hours apart; 2 hours is a conservative minimum to filter noise.
