@@ -18,10 +18,12 @@ class TestGetTimezoneName:
         coord = Coordinate(lat=51.5074, lon=-0.1278)
         assert get_timezone_name(coord) == "Europe/London"
 
-    def test_ocean_returns_none(self):
+    def test_ocean_returns_utc_offset_timezone(self):
+        # Middle of the Pacific — timezonefinder returns Etc/GMT+X for ocean
         coord = Coordinate(lat=0.0, lon=-160.0)
         result = get_timezone_name(coord)
-        assert result is None or isinstance(result, str)
+        assert result is not None
+        assert result.startswith("Etc/GMT")
 
 
 class TestToLocalTime:
