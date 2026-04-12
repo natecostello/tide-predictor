@@ -108,10 +108,12 @@ class TestFindExtremaEdgeCases:
 
 
 class TestComputeTides:
-    def _setup_pytmd_mocks(self, mock_ensure, mock_model_cls, mock_time_series, n=240):
+    def _setup_pytmd_mocks(self, mock_ensure, mock_model_cls, mock_predict, mock_infer, n=240):
         """Helper to wire up the pyTMD mock chain for compute_tides tests."""
         mock_instance = MagicMock()
         mock_model_cls.return_value = mock_instance
+        mock_instance.corrections = "GOT"
+        mock_instance.minor = ["2q1", "sigma1"]
         mock_ds = MagicMock()
         mock_instance.open_dataset.return_value = mock_ds
         mock_local = MagicMock()
@@ -119,53 +121,112 @@ class TestComputeTides:
 
         mock_result = MagicMock()
         mock_result.values = np.sin(np.linspace(0, 4 * np.pi, n))
-        mock_time_series.return_value = mock_result
+        mock_predict.return_value = mock_result
 
+        mock_infer_result = MagicMock()
+        mock_infer_result.values = np.zeros(n)
+        mock_infer.return_value = mock_infer_result
+
+    @patch("pyTMD.predict.infer_minor")
     @patch("pyTMD.predict.time_series")
     @patch("pyTMD.io.model")
     @patch("tides.cache.ensure_model_data")
-    def test_compute_tides_calls_ensure_model(self, mock_ensure, mock_model_cls, mock_predict):
+    def test_compute_tides_calls_ensure_model(
+        self, mock_ensure, mock_model_cls, mock_predict, mock_infer
+    ):
         """Verify ensure_model_data() is called."""
-        self._setup_pytmd_mocks(mock_ensure, mock_model_cls, mock_predict)
-
+        self._setup_pytmd_mocks(mock_ensure, mock_model_cls, mock_predict, mock_infer)
         coord = Coordinate(lat=40.7, lon=-74.0)
-        begin = datetime.date(2025, 12, 3)
-        end = datetime.date(2025, 12, 3)
-        compute_tides(coord, begin, end)
-
+        compute_tides(coord, datetime.date(2025, 12, 3), datetime.date(2025, 12, 3))
         mock_ensure.assert_called_once()
 
+    @patch("pyTMD.predict.infer_minor")
     @patch("pyTMD.predict.time_series")
     @patch("pyTMD.io.model")
     @patch("tides.cache.ensure_model_data")
-    def test_compute_tides_date_range(self, mock_ensure, mock_model_cls, mock_predict):
-        """Single day spans 24h at 6-min intervals (240 points)."""
-        self._setup_pytmd_mocks(mock_ensure, mock_model_cls, mock_predict)
-
+    def test_compute_tides_passes_model_corrections(
+        self, mock_ensure, mock_model_cls, mock_predict, mock_infer
+    ):
+        """time_series must be called with the model's corrections type, not the default."""
+        self._setup_pytmd_mocks(mock_ensure, mock_model_cls, mock_predict, mock_infer)
         coord = Coordinate(lat=40.7, lon=-74.0)
-        begin = datetime.date(2025, 12, 3)
-        end = datetime.date(2025, 12, 3)
-        compute_tides(coord, begin, end)
+        compute_tides(coord, datetime.date(2025, 12, 3), datetime.date(2025, 12, 3))
+        _, kwargs = mock_predict.call_args
+        assert kwargs.get("corrections") == "GOT"
 
-        # pyTMD.predict.time_series should be called with a numpy array of 240 elements
+    @patch("pyTMD.predict.infer_minor")
+    @patch("pyTMD.predict.time_series")
+    @patch("pyTMD.io.model")
+    @patch("tides.cache.ensure_model_data")
+    def test_compute_tides_infers_minor_constituents(
+        self, mock_ensure, mock_model_cls, mock_predict, mock_infer
+    ):
+        """infer_minor must be called to add minor constituent contributions."""
+        self._setup_pytmd_mocks(mock_ensure, mock_model_cls, mock_predict, mock_infer)
+        coord = Coordinate(lat=40.7, lon=-74.0)
+        compute_tides(coord, datetime.date(2025, 12, 3), datetime.date(2025, 12, 3))
+        mock_infer.assert_called_once()
+        _, kwargs = mock_infer.call_args
+        assert kwargs.get("corrections") == "GOT"
+
+    @patch("pyTMD.predict.infer_minor")
+    @patch("pyTMD.predict.time_series")
+    @patch("pyTMD.io.model")
+    @patch("tides.cache.ensure_model_data")
+    def test_compute_tides_uses_extrapolation(
+        self, mock_ensure, mock_model_cls, mock_predict, mock_infer
+    ):
+        """interp must use extrapolate=True for coastal points near land mask."""
+        self._setup_pytmd_mocks(mock_ensure, mock_model_cls, mock_predict, mock_infer)
+        coord = Coordinate(lat=40.7, lon=-74.0)
+        compute_tides(coord, datetime.date(2025, 12, 3), datetime.date(2025, 12, 3))
+        mock_ds = mock_model_cls.return_value.open_dataset.return_value
+        _, kwargs = mock_ds.tmd.interp.call_args
+        assert kwargs.get("extrapolate") is True
+
+    @patch("pyTMD.predict.infer_minor")
+    @patch("pyTMD.predict.time_series")
+    @patch("pyTMD.io.model")
+    @patch("tides.cache.ensure_model_data")
+    def test_compute_tides_accepts_model_name(
+        self, mock_ensure, mock_model_cls, mock_predict, mock_infer
+    ):
+        """compute_tides accepts a model_name parameter to select different models."""
+        self._setup_pytmd_mocks(mock_ensure, mock_model_cls, mock_predict, mock_infer)
+        compute_tides(
+            Coordinate(lat=40.7, lon=-74.0),
+            datetime.date(2025, 12, 3),
+            datetime.date(2025, 12, 3),
+            model_name="EOT20",
+        )
+        mock_model_cls.return_value.from_database.assert_called_once_with("EOT20")
+
+    @patch("pyTMD.predict.infer_minor")
+    @patch("pyTMD.predict.time_series")
+    @patch("pyTMD.io.model")
+    @patch("tides.cache.ensure_model_data")
+    def test_compute_tides_date_range(self, mock_ensure, mock_model_cls, mock_predict, mock_infer):
+        """Single day spans 24h at 6-min intervals (240 points)."""
+        self._setup_pytmd_mocks(mock_ensure, mock_model_cls, mock_predict, mock_infer)
+        coord = Coordinate(lat=40.7, lon=-74.0)
+        compute_tides(coord, datetime.date(2025, 12, 3), datetime.date(2025, 12, 3))
         call_args = mock_predict.call_args
         t_array = call_args[0][0]
         assert len(t_array) == 240
 
+    @patch("pyTMD.predict.infer_minor")
     @patch("pyTMD.predict.time_series")
     @patch("pyTMD.io.model")
     @patch("tides.cache.ensure_model_data")
-    def test_compute_tides_returns_events(self, mock_ensure, mock_model_cls, mock_predict):
-        """Mock predict to return a sine wave -> returns TideEvent list with highs and lows."""
-        self._setup_pytmd_mocks(mock_ensure, mock_model_cls, mock_predict)
-
-        coord = Coordinate(lat=40.7, lon=-74.0)
-        begin = datetime.date(2025, 12, 3)
-        end = datetime.date(2025, 12, 3)
-        events = compute_tides(coord, begin, end)
-
+    def test_compute_tides_returns_events(
+        self, mock_ensure, mock_model_cls, mock_predict, mock_infer
+    ):
+        """Mock predict returning a sine wave -> TideEvent list with highs and lows."""
+        self._setup_pytmd_mocks(mock_ensure, mock_model_cls, mock_predict, mock_infer)
+        events = compute_tides(
+            Coordinate(lat=40.7, lon=-74.0), datetime.date(2025, 12, 3), datetime.date(2025, 12, 3)
+        )
         assert len(events) > 0
-        # Should have both highs and lows
         heights = [e.height for e in events]
         assert any(h > 0.5 for h in heights), "Expected at least one high tide"
         assert any(h < -0.5 for h in heights), "Expected at least one low tide"

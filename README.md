@@ -55,6 +55,7 @@ tides fetch-model
 | `--between` | `-b` | Time window filter (HH:MM:HH:MM) |
 | `--precision` | `-p` | Decimal places for height (default: 1) |
 | `--source` | `-s` | Data source: auto, noaa, model (default: auto) |
+| `--model` | `-m` | Tide model: got5.6, eot20 (default: got5.6) |
 | `--verbose` | `-v` | Show source details |
 | `--version` | | Show version |
 
@@ -62,7 +63,9 @@ tides fetch-model
 
 **NOAA CO-OPS** (US waters): Uses official tide station predictions. Auto-selected when a station is within 25km of the coordinates.
 
-**GOT5.6** (global): NASA Goddard Ocean Tide model. Used as fallback for locations outside NOAA coverage. Model data is auto-downloaded on first use (~hundreds of MB).
+**GOT5.6** (global, default): NASA Goddard Ocean Tide model at 0.5° resolution. Used as fallback for locations outside NOAA coverage. Model data is auto-downloaded on first use.
+
+**EOT20** (global, `--model eot20`): Empirical Ocean Tide model at 0.125° resolution (4x finer than GOT5.6). Better accuracy for coastal locations. Auto-downloaded on first use (~2.3GB).
 
 ## Development
 

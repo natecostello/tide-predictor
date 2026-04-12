@@ -8,7 +8,7 @@ from tides.noaa import (
     find_nearest_station,
     parse_predictions_response,
 )
-from tides.ocean_model import MODEL_NAME, compute_tides
+from tides.ocean_model import DEFAULT_MODEL, compute_tides
 
 MAX_STATION_DISTANCE_KM = 25.0
 
@@ -66,8 +66,9 @@ def _resolve_model(
     coord: Coordinate,
     begin_date: datetime.date,
     end_date: datetime.date,
+    model_name: str = DEFAULT_MODEL,
 ) -> TideResult:
-    events = compute_tides(coord, begin_date, end_date)
+    events = compute_tides(coord, begin_date, end_date, model_name=model_name)
     if not events:
         print(
             "Error: No tidal data for this location — it may be inland.",
@@ -83,7 +84,7 @@ def _resolve_model(
         station_id=None,
         station_name=None,
         station_distance_km=None,
-        model_name=MODEL_NAME,
+        model_name=model_name,
         days=days,
     )
 
@@ -93,6 +94,7 @@ def resolve_tides(
     begin_date: datetime.date,
     end_date: datetime.date,
     source: Source = Source.AUTO,
+    model_name: str = DEFAULT_MODEL,
 ) -> TideResult:
     if source == Source.NOAA:
         stations = get_stations()
@@ -107,11 +109,11 @@ def resolve_tides(
         return result
 
     if source == Source.MODEL:
-        return _resolve_model(coord, begin_date, end_date)
+        return _resolve_model(coord, begin_date, end_date, model_name=model_name)
 
     # AUTO: try NOAA first, fall back to model
     stations = get_stations()
     noaa_result = _resolve_noaa(coord, begin_date, end_date, stations)
     if noaa_result is not None:
         return noaa_result
-    return _resolve_model(coord, begin_date, end_date)
+    return _resolve_model(coord, begin_date, end_date, model_name=model_name)

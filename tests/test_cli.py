@@ -403,6 +403,29 @@ class TestCLIInvocation:
         assert "boom" not in result.output
 
 
+class TestModelFlag:
+    @patch("tides.resolver.resolve_tides")
+    def test_model_flag_passed_to_resolver(self, mock_resolve):
+        mock_resolve.return_value = TideResult(
+            coordinate=Coordinate(lat=40.7, lon=-74.0),
+            source_type=Source.MODEL,
+            station_id=None,
+            station_name=None,
+            station_distance_km=None,
+            model_name="EOT20",
+            days=[],
+        )
+        result = runner.invoke(app, ["get", "40.7,-74.0", "--source", "model", "--model", "eot20"])
+        assert result.exit_code == 0
+        _, kwargs = mock_resolve.call_args
+        assert kwargs.get("model_name") == "EOT20"
+
+    def test_invalid_model_name(self):
+        result = runner.invoke(app, ["get", "40.7,-74.0", "--model", "INVALID"])
+        assert result.exit_code == 1
+        assert "Invalid model" in result.output
+
+
 class TestFetchModelCommand:
     @patch("tides.cache.fetch_all")
     def test_fetch_model_success(self, mock_fetch_all):

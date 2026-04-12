@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 from tides.cache import (
     STATION_CACHE_MAX_AGE_DAYS,
-    _got_model_exists,
+    _model_exists,
     ensure_model_data,
     fetch_all,
     fetch_station_data,
@@ -161,13 +161,13 @@ class TestLoadStationCache:
             assert not path.exists()
 
 
-class TestGotModelExists:
+class TestModelExists:
     def test_returns_true_when_model_found(self):
         mock_model_instance = MagicMock()
         mock_model_class = MagicMock(return_value=mock_model_instance)
 
         with patch("pyTMD.io.model", mock_model_class):
-            result = _got_model_exists()
+            result = _model_exists("GOT5.6")
             assert result is True
             mock_model_instance.from_database.assert_called_once_with("GOT5.6")
 
@@ -177,20 +177,20 @@ class TestGotModelExists:
         mock_model_class = MagicMock(return_value=mock_model_instance)
 
         with patch("pyTMD.io.model", mock_model_class):
-            result = _got_model_exists()
+            result = _model_exists("GOT5.6")
             assert result is False
 
 
 class TestEnsureModelData:
     def test_early_return_when_model_exists(self):
-        with patch("tides.cache._got_model_exists", return_value=True) as mock_exists:
+        with patch("tides.cache._model_exists", return_value=True) as mock_exists:
             with patch("tides.cache.print") as mock_print:
                 ensure_model_data()
                 mock_exists.assert_called_once()
                 mock_print.assert_not_called()
 
     def test_downloads_when_model_missing(self):
-        with patch("tides.cache._got_model_exists", return_value=False):
+        with patch("tides.cache._model_exists", return_value=False):
             with patch("pyTMD.datasets.fetch_gsfc_got") as mock_fetch:
                 with patch("tides.cache.print"):
                     ensure_model_data()

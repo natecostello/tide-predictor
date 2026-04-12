@@ -8,6 +8,7 @@ import typer
 
 from tides import __version__
 from tides.models import Coordinate, Source, TideResult
+from tides.ocean_model import SUPPORTED_MODELS
 
 app = typer.Typer(
     name="tides",
@@ -257,6 +258,7 @@ def get(
     ),
     precision: int = typer.Option(1, "--precision", "-p", help="Decimal places for height"),
     source: str = typer.Option("auto", "--source", "-s", help="Data source: auto, noaa, model"),
+    model: str = typer.Option("got5.6", "--model", "-m", help="Tide model: got5.6, eot20"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Show source details"),
 ) -> None:
     """Get tide predictions for a coastal coordinate."""
@@ -277,11 +279,19 @@ def get(
         )
         raise SystemExit(1)
 
+    model_name = model.upper()
+    if model_name not in SUPPORTED_MODELS:
+        print(
+            f"Error: Invalid model '{model}'. Expected: {', '.join(sorted(SUPPORTED_MODELS))}",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+
     from tides.noaa import NOAAError
     from tides.resolver import resolve_tides
 
     try:
-        result = resolve_tides(coord, begin_date, end_date, source_enum)
+        result = resolve_tides(coord, begin_date, end_date, source_enum, model_name=model_name)
     except SystemExit:
         raise
     except NOAAError as e:
