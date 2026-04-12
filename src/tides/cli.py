@@ -120,6 +120,9 @@ def parse_between(between_str: str | None) -> tuple[datetime.time, datetime.time
             file=sys.stderr,
         )
         raise SystemExit(1)
+    if end < start:
+        print("Error: --between end time must not be before start time.", file=sys.stderr)
+        raise SystemExit(1)
     return start, end
 
 
@@ -276,6 +279,10 @@ def main(
     begin_date, end_date = parse_date_arg(date)
     between_times = parse_between(between)
 
+    if precision < 0:
+        print("Error: --precision must be a non-negative integer.", file=sys.stderr)
+        raise SystemExit(1)
+
     try:
         source_enum = Source(source.lower())
     except ValueError:
@@ -329,6 +336,21 @@ def fetch_model() -> None:
 
     try:
         fetch_all()
-    except Exception as e:
-        print(f"Error: Could not download tidal data. {e}", file=sys.stderr)
+    except (httpx.ConnectError, httpx.TimeoutException):
+        print(
+            "Error: Could not connect to data service. Check your internet connection.",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+    except httpx.HTTPStatusError:
+        print(
+            "Error: Data service returned an error. Please try again later.",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+    except Exception:
+        print(
+            "Error: Could not download tidal data.",
+            file=sys.stderr,
+        )
         raise SystemExit(2)
