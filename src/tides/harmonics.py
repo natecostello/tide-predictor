@@ -6,8 +6,10 @@ pipeline used by the gridded model path (ocean_model.py).
 """
 
 import datetime
+import functools
 
 import numpy as np
+import pyTMD.constituents
 import xarray as xr
 
 from tides.models import TideEvent
@@ -35,6 +37,16 @@ def _normalize_name(name: str) -> str:
     return _NAME_MAP.get(name, name)
 
 
+@functools.cache
+def _is_recognized(name: str) -> bool:
+    """Check if pyTMD recognizes a constituent name."""
+    try:
+        pyTMD.constituents.coefficients_table([name])
+        return True
+    except (ValueError, KeyError):
+        return False
+
+
 def _build_dataset(constituents: list[dict]) -> xr.Dataset:
     """Build a pyTMD-compatible xarray Dataset from station harmonics.
 
@@ -48,6 +60,8 @@ def _build_dataset(constituents: list[dict]) -> xr.Dataset:
         name = _normalize_name(c["name"].lower())
         amp = c["amplitude"]
         if amp <= 0:
+            continue
+        if not _is_recognized(name):
             continue
         phase_rad = np.radians(c["phase"])
         z = amp * np.exp(-1j * phase_rad)
