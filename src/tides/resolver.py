@@ -10,6 +10,8 @@ from tides.noaa import (
 )
 from tides.ocean_model import MODEL_NAME, compute_tides
 
+MAX_STATION_DISTANCE_KM = 25.0
+
 
 def _group_events_by_date(
     events: list[TideEvent],
@@ -38,7 +40,7 @@ def _resolve_noaa(
     begin_date: datetime.date,
     end_date: datetime.date,
     stations: list[dict],
-    max_distance_km: float = 25.0,
+    max_distance_km: float = MAX_STATION_DISTANCE_KM,
 ) -> TideResult | None:
     result = find_nearest_station(stations, coord, max_distance_km)
     if result is None:
@@ -96,8 +98,9 @@ def resolve_tides(
         stations = get_stations()
         result = _resolve_noaa(coord, begin_date, end_date, stations)
         if result is None:
+            dist = MAX_STATION_DISTANCE_KM
             print(
-                "Error: No NOAA tide station found within 25km of this location.",
+                f"Error: No NOAA tide station found within {dist:.0f}km of this location.",
                 file=sys.stderr,
             )
             raise SystemExit(1)
