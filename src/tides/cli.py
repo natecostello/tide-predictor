@@ -17,6 +17,7 @@ app = typer.Typer(
         "  tides 40.7128,-74.0060\n\n"
         "  tides 40.7128,-74.0060 --date 2026-04-15\n\n"
         "  tides 35.9,-75.6 --local --feet\n\n"
+        "  tides -- 40.7128 -74.0060  (use -- with space-separated negative lon)\n\n"
         "https://github.com/natecostello/tide-predictor"
     ),
     add_completion=False,
