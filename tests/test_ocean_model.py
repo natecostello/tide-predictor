@@ -191,7 +191,7 @@ class TestComputeTides:
     def test_compute_tides_crops_dataset(
         self, mock_ensure, mock_model_cls, mock_predict, mock_infer
     ):
-        """open_dataset must use crop=True with bounds around the coordinate."""
+        """open_dataset must use crop=True with bounds in 0-360 lon space."""
         self._setup_pytmd_mocks(mock_ensure, mock_model_cls, mock_predict, mock_infer)
         coord = Coordinate(lat=40.7, lon=-74.0)
         compute_tides(coord, datetime.date(2025, 12, 3), datetime.date(2025, 12, 3))
@@ -200,8 +200,9 @@ class TestComputeTides:
         assert kwargs.get("crop") is True
         bounds = kwargs.get("bounds")
         assert bounds is not None
-        # Bounds should contain the coordinate
-        assert bounds[0] < coord.lon < bounds[1]
+        # Bounds in 0-360 space should contain coord.lon % 360
+        lon360 = coord.lon % 360
+        assert bounds[0] < lon360 < bounds[1]
         assert bounds[2] < coord.lat < bounds[3]
 
     @patch("pyTMD.predict.infer_minor")

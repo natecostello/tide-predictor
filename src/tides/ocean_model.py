@@ -69,21 +69,28 @@ def compute_tides(
     t = np.array([(dt - _PYTMD_PREDICT_EPOCH).total_seconds() / 86400.0 for dt in times])
 
     # Load model and interpolate constituents at the coordinate.
-    # Use crop with bounds for large models (FES2022 is 16 GB uncropped).
     m = pyTMD.io.model()
     m.from_database(model_name)
     pad = 2.0  # degrees padding around target for interpolation
     lat_min = max(coord.lat - pad, -90.0)
     lat_max = min(coord.lat + pad, 90.0)
-    lon_min = coord.lon - pad
-    lon_max = coord.lon + pad
-    # Skip cropping near antimeridian where bounds would wrap
-    crosses_antimeridian = lon_min < -180 or lon_max > 180
-    if crosses_antimeridian:
-        ds = m.open_dataset(crop=False)
+    # Model grids use 0-360 longitude
+    lon360 = coord.lon % 360
+    lon_min = lon360 - pad
+    lon_max = lon360 + pad
+
+    if m.format in ("FES-ascii", "FES-netcdf", "FES-native"):
+        # FES models: use dask lazy loading + manual crop to avoid
+        # loading all 34 constituent grids (~5 GB) into memory.
+        ds = m.open_dataset(chunks={})
+        ds = ds.sel(
+            x=slice(max(lon_min, 0), min(lon_max, 360)),
+            y=slice(lat_min, lat_max),
+        ).compute()
     else:
         bounds = [lon_min, lon_max, lat_min, lat_max]
         ds = m.open_dataset(crop=True, bounds=bounds)
+
     local = ds.tmd.interp(x=coord.lon, y=coord.lat, extrapolate=True, cutoff=10)
 
     # Predict tidal time series using the model's correction type
