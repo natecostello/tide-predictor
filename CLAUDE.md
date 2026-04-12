@@ -14,11 +14,12 @@ A stateless CLI for tide predictions using NOAA station data and the GOT5.6 glob
 ## CLI Interface
 
 ```
-tides <lat,lon> [--date DATE] [--local] [--feet] [--json] [--between HH:MM:HH:MM] [--precision N] [--source auto|noaa|model] [--verbose]
+tides get <lat,lon> [--date DATE] [--local] [--feet] [--json] [--between HH:MM:HH:MM] [--precision N] [--source auto|noaa|model] [--verbose]
 tides fetch-model
+tides --version
 ```
 
-Coordinate accepts: `lat,lon` (no space), `"lat, lon"` (quoted), or `lat lon` (two args).
+Coordinate accepts comma-separated form: `lat,lon` (e.g. `40.7128,-74.0060`).
 
 ## CLI Design Guidelines (from clig.dev)
 
