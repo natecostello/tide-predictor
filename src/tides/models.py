@@ -8,6 +8,7 @@ METERS_TO_FEET = 3.28084
 class Source(Enum):
     AUTO = "auto"
     NOAA = "noaa"
+    STATION = "station"
     MODEL = "model"
 
 

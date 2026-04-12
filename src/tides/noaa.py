@@ -40,7 +40,7 @@ def parse_station_list(xml_text: str) -> list[dict]:
     return stations
 
 
-def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     earth_radius_km = 6371.0
     dlat = math.radians(lat2 - lat1)
     dlon = math.radians(lon2 - lon1)
@@ -59,7 +59,7 @@ def find_nearest_station(
     best = None
     best_dist = float("inf")
     for s in stations:
-        d = _haversine_km(coord.lat, coord.lon, s["lat"], s["lon"])
+        d = haversine_km(coord.lat, coord.lon, s["lat"], s["lon"])
         if d < best_dist:
             best = s
             best_dist = d

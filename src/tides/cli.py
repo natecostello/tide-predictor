@@ -145,6 +145,8 @@ def format_plain(
     verbose_prefix = ""
     if verbose and result.source_type == Source.NOAA and result.station_name:
         verbose_prefix = f"[NOAA: {result.station_name}, {result.station_distance_km}km] "
+    elif verbose and result.source_type == Source.STATION and result.station_name:
+        verbose_prefix = f"[Station: {result.station_name}, {result.station_distance_km}km] "
     elif verbose and result.source_type == Source.MODEL and result.model_name:
         verbose_prefix = f"[Model: {result.model_name}] "
 
@@ -194,7 +196,7 @@ def format_json(
         tz_name = get_timezone_name(result.coordinate) or "UTC"
 
     source_obj: dict = {"type": result.source_type.value}
-    if result.source_type == Source.NOAA and result.station_id:
+    if result.source_type in (Source.NOAA, Source.STATION) and result.station_id:
         source_obj["station"] = {
             "id": result.station_id,
             "name": result.station_name,
@@ -257,7 +259,9 @@ def get(
         None, "--between", "-b", help="Time filter: HH:MM:HH:MM"
     ),
     precision: int = typer.Option(1, "--precision", "-p", help="Decimal places for height"),
-    source: str = typer.Option("auto", "--source", "-s", help="Data source: auto, noaa, model"),
+    source: str = typer.Option(
+        "auto", "--source", "-s", help="Data source: auto, noaa, station, model"
+    ),
     model: str = typer.Option("got5.6", "--model", "-m", help="Tide model: got5.6, eot20"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Show source details"),
 ) -> None:
@@ -274,7 +278,7 @@ def get(
         source_enum = Source(source.lower())
     except ValueError:
         print(
-            f"Error: Invalid source '{source}'. Expected: auto, noaa, model",
+            f"Error: Invalid source '{source}'. Expected: auto, noaa, station, model",
             file=sys.stderr,
         )
         raise SystemExit(1)
