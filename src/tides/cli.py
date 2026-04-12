@@ -373,7 +373,7 @@ def cache_show(
     if ctx.invoked_subcommand is not None:
         return
 
-    from tides.cache import _format_size, get_cache_info
+    from tides.cache import format_size, get_cache_info
 
     info = get_cache_info()
 
@@ -390,30 +390,30 @@ def cache_show(
     print(f"App cache: {app_info['path']}")
     if app_info["items"]:
         for item in app_info["items"]:
-            print(f"  {item['name']:<25} {_format_size(item['size']):>10}")
+            print(f"  {item['name']:<25} {format_size(item['size']):>10}")
     else:
         print("  (empty)")
 
     print(f"\nModel cache: {model_info['path']}")
     if model_info["items"]:
         for item in model_info["items"]:
-            print(f"  {item['name']:<25} {_format_size(item['size']):>10}")
+            print(f"  {item['name']:<25} {format_size(item['size']):>10}")
     else:
         print("  (empty)")
 
-    print(f"\nTotal: {_format_size(app_total + model_total)}")
+    print(f"\nTotal: {format_size(app_total + model_total)}")
 
 
 @cache_app.command("clear")
 def cache_clear(
-    name: str = typer.Argument(
+    name: Optional[str] = typer.Argument(
         None,
         help="Item to clear: stations, got5.5, got5.6, eot20, fes2022, hamtide11",
     ),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt"),
 ) -> None:
     """Clear cached data. Omit name to clear everything."""
-    from tides.cache import _format_size, clear_cache
+    from tides.cache import format_size, clear_cache
 
     target = "all cached data" if name is None else f"'{name}' cache"
 
@@ -430,7 +430,7 @@ def cache_clear(
         print(f"Error clearing {target}: {e}", file=sys.stderr)
         raise SystemExit(2)
 
-    print(f"Cleared {target} ({_format_size(freed)} freed).")
+    print(f"Cleared {target} ({format_size(freed)} freed).")
 
 
 def version_callback(value: bool) -> None:

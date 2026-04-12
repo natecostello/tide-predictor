@@ -221,7 +221,7 @@ def _dir_size(path: Path) -> int:
     return total
 
 
-def _format_size(size_bytes: int) -> str:
+def format_size(size_bytes: int) -> str:
     if size_bytes >= 1_073_741_824:
         return f"{size_bytes / 1_073_741_824:.1f} GB"
     if size_bytes >= 1_048_576:

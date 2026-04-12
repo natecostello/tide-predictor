@@ -9,7 +9,7 @@ import pytest
 from tides.cache import (
     STATION_CACHE_MAX_AGE_DAYS,
     _dir_size,
-    _format_size,
+    format_size,
     _model_exists,
     clear_cache,
     ensure_model_data,
@@ -305,19 +305,19 @@ class TestFetchAll:
 
 class TestFormatSize:
     def test_bytes(self):
-        assert _format_size(500) == "500 B"
+        assert format_size(500) == "500 B"
 
     def test_kilobytes(self):
-        assert _format_size(2048) == "2.0 KB"
+        assert format_size(2048) == "2.0 KB"
 
     def test_megabytes(self):
-        assert _format_size(5 * 1024 * 1024) == "5.0 MB"
+        assert format_size(5 * 1024 * 1024) == "5.0 MB"
 
     def test_gigabytes(self):
-        assert _format_size(3 * 1024 * 1024 * 1024) == "3.0 GB"
+        assert format_size(3 * 1024 * 1024 * 1024) == "3.0 GB"
 
     def test_zero(self):
-        assert _format_size(0) == "0 B"
+        assert format_size(0) == "0 B"
 
 
 class TestDirSize:
