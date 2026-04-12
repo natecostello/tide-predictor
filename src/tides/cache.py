@@ -48,7 +48,12 @@ def load_station_cache() -> list[dict] | None:
     path = get_station_cache_path()
     if not path.exists():
         return None
-    return json.loads(path.read_text())
+    try:
+        return json.loads(path.read_text())
+    except (json.JSONDecodeError, ValueError):
+        # Corrupted cache — delete and refetch
+        path.unlink(missing_ok=True)
+        return None
 
 
 def _got_model_exists() -> bool:
