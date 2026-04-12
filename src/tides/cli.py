@@ -3,6 +3,7 @@ import json
 import sys
 from typing import Optional
 
+import httpx
 import typer
 
 from tides import __version__
@@ -289,8 +290,23 @@ def main(
         result = resolve_tides(coord, begin_date, end_date, source_enum)
     except SystemExit:
         raise
-    except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
+    except httpx.HTTPStatusError:
+        print(
+            "Error: Could not fetch tide data from NOAA. The service may be unavailable.",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+    except (httpx.ConnectError, httpx.TimeoutException):
+        print(
+            "Error: Could not connect to tide data service. Check your internet connection.",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+    except Exception:
+        print(
+            "Error: An unexpected error occurred while fetching tide data.",
+            file=sys.stderr,
+        )
         raise SystemExit(2)
 
     if json_output:
