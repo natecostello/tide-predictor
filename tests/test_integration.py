@@ -10,6 +10,8 @@ import pytest
 
 pytestmark = pytest.mark.integration
 
+SUBPROCESS_TIMEOUT = 60
+
 
 class TestNOAAIntegration:
     def test_battery_ny(self):
@@ -26,6 +28,7 @@ class TestNOAAIntegration:
             ],
             capture_output=True,
             text=True,
+            timeout=SUBPROCESS_TIMEOUT,
         )
         assert result.returncode == 0
         data = json.loads(result.stdout)
@@ -46,6 +49,7 @@ class TestNOAAIntegration:
             ],
             capture_output=True,
             text=True,
+            timeout=SUBPROCESS_TIMEOUT,
         )
         assert result.returncode == 0
         assert "[NOAA:" in result.stdout
@@ -90,6 +94,7 @@ class TestCLIFlags:
             ],
             capture_output=True,
             text=True,
+            timeout=SUBPROCESS_TIMEOUT,
         )
         assert result.returncode == 0
         data = json.loads(result.stdout)
@@ -108,6 +113,7 @@ class TestCLIFlags:
             ],
             capture_output=True,
             text=True,
+            timeout=SUBPROCESS_TIMEOUT,
         )
         assert result.returncode == 0
         assert "ft@" in result.stdout
@@ -124,6 +130,7 @@ class TestCLIFlags:
             ],
             capture_output=True,
             text=True,
+            timeout=SUBPROCESS_TIMEOUT,
         )
         assert result.returncode == 0
         assert "2026-04-15:" in result.stdout
@@ -134,6 +141,7 @@ class TestCLIFlags:
             ["tides", "--version"],
             capture_output=True,
             text=True,
+            timeout=SUBPROCESS_TIMEOUT,
         )
         assert result.returncode == 0
         assert "tides" in result.stdout
