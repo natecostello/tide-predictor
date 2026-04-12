@@ -57,9 +57,15 @@ def load_station_cache() -> list[dict] | None:
 
 
 def _got_model_exists() -> bool:
-    model_dir = get_model_dir()
-    got_dir = model_dir / "GOT5.6"
-    return got_dir.exists() and any(got_dir.iterdir())
+    # pyTMD stores models in its own platformdirs cache (e.g. ~/Library/Caches/pytmd/)
+    try:
+        import pyTMD.io
+
+        m = pyTMD.io.model()
+        m.from_database("GOT5.6")
+        return True
+    except FileNotFoundError:
+        return False
 
 
 def ensure_model_data() -> None:
@@ -68,7 +74,9 @@ def ensure_model_data() -> None:
     import pyTMD.datasets
 
     print("Downloading GOT5.6 tidal model... this only happens once.", file=sys.stderr)
-    pyTMD.datasets.fetch_gsfc_got(model_dir=str(get_model_dir()))
+    # GOT5.6 depends on GOT5.5 constituent files
+    pyTMD.datasets.fetch_gsfc_got(model="GOT5.5", format="netcdf")
+    pyTMD.datasets.fetch_gsfc_got(model="GOT5.6", format="netcdf")
 
 
 def fetch_station_data() -> list[dict]:

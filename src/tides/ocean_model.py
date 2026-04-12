@@ -13,6 +13,9 @@ ELEVATION_INTERVAL_MINUTES = 6
 _MIN_PEAK_SEPARATION_MINUTES = 120
 _MIN_PEAK_DISTANCE = _MIN_PEAK_SEPARATION_MINUTES // ELEVATION_INTERVAL_MINUTES
 
+# Reference epoch for pyTMD predict.time_series: 1992-01-01T00:00:00 UTC
+_PYTMD_PREDICT_EPOCH = datetime.datetime(1992, 1, 1, tzinfo=datetime.timezone.utc)
+
 
 def find_extrema(
     times: list[datetime.datetime],
@@ -40,9 +43,10 @@ def compute_tides(
     begin_date: datetime.date,
     end_date: datetime.date,
 ) -> list[TideEvent]:
-    import pyTMD.compute
+    import pyTMD.io
+    import pyTMD.predict
 
-    from tides.cache import ensure_model_data, get_model_dir
+    from tides.cache import ensure_model_data
 
     ensure_model_data()
 
@@ -59,16 +63,17 @@ def compute_tides(
         times.append(current)
         current += datetime.timedelta(minutes=ELEVATION_INTERVAL_MINUTES)
 
-    lons = np.full(len(times), coord.lon)
-    lats = np.full(len(times), coord.lat)
+    # pyTMD predict.time_series expects days since 1992-01-01
+    t = np.array([(dt - _PYTMD_PREDICT_EPOCH).total_seconds() / 86400.0 for dt in times])
 
-    elevations = pyTMD.compute.tide_elevations(
-        lons,
-        lats,
-        times,
-        DIRECTORY=str(get_model_dir()),
-        MODEL="GOT5.6",
-        EPSG=4326,
-    )
+    # Load model and interpolate constituents at the coordinate
+    m = pyTMD.io.model()
+    m.from_database(MODEL_NAME)
+    ds = m.open_dataset(crop=False)
+    local = ds.tmd.interp(x=coord.lon, y=coord.lat)
+
+    # Predict tidal time series
+    tide = pyTMD.predict.time_series(t, local)
+    elevations = tide.values.astype(float)
 
     return find_extrema(times, elevations)

@@ -17,7 +17,6 @@ app = typer.Typer(
         "  tides 40.7128,-74.0060\n\n"
         "  tides 40.7128,-74.0060 --date 2026-04-15\n\n"
         "  tides 35.9,-75.6 --local --feet\n\n"
-        "  tides -- 40.7128 -74.0060  (use -- with space-separated negative lon)\n\n"
         "https://github.com/natecostello/tide-predictor"
     ),
     add_completion=False,
@@ -27,6 +26,8 @@ app = typer.Typer(
 
 
 def parse_coordinate(args: list[str]) -> Coordinate:
+    # Strip -- separator that Typer may pass through
+    args = [a for a in args if a != "--"]
     if not args:
         print(
             "Error: Could not parse coordinates. Expected: lat,lon (e.g. 40.7128,-74.0060)",
@@ -279,6 +280,10 @@ def main(
 
     # If a subcommand is being invoked, let it run
     if ctx.invoked_subcommand is not None:
+        return
+
+    # Typer may pass subcommand names as positional args — bail if so
+    if coordinate and coordinate[0] in ("fetch-model",):
         return
 
     if not coordinate:

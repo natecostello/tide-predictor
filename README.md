@@ -40,14 +40,11 @@ tides 40.7128,-74.0060 --source noaa
 # Force global model
 tides -8.05,-34.87 --source model
 
-# Space-separated coordinates (use -- to prevent negative lon being parsed as a flag)
-tides -- 40.7128 -74.0060
-
 # Pre-download model data
 tides fetch-model
 ```
 
-**Note:** When using space-separated coordinates with a negative longitude, prefix with `--` to prevent the shell/CLI from interpreting the negative number as a flag. The comma-separated form (`40.7128,-74.0060`) avoids this issue entirely.
+**Note:** Always use the comma-separated coordinate form (`40.7128,-74.0060`). Space-separated coordinates with negative longitude values are not supported due to CLI argument parsing limitations.
 
 ## Options
 
