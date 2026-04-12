@@ -413,7 +413,7 @@ def cache_clear(
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt"),
 ) -> None:
     """Clear cached data. Omit name to clear everything."""
-    from tides.cache import format_size, clear_cache
+    from tides.cache import clear_cache, format_size
 
     target = "all cached data" if name is None else f"'{name}' cache"
 

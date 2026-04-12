@@ -9,12 +9,12 @@ import pytest
 from tides.cache import (
     STATION_CACHE_MAX_AGE_DAYS,
     _dir_size,
-    format_size,
     _model_exists,
     clear_cache,
     ensure_model_data,
     fetch_all,
     fetch_station_data,
+    format_size,
     get_cache_dir,
     get_cache_info,
     get_model_dir,
