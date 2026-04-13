@@ -3,8 +3,8 @@ from unittest.mock import patch
 
 import pytest
 
-from tides.models import Coordinate, Source, TideEvent
-from tides.resolver import _group_events_by_date, resolve_tides
+from tides.models import Coordinate, Source, TideDay, TideEvent, TideResult
+from tides.resolver import _apply_datum, _group_events_by_date, resolve_tides
 
 SAMPLE_STATIONS = [
     {"id": "8518750", "name": "The Battery", "lat": 40.7006, "lon": -74.0142},
@@ -37,6 +37,7 @@ class TestResolveNoaa:
             begin_date=datetime.date(2026, 4, 15),
             end_date=datetime.date(2026, 4, 15),
             source=Source.AUTO,
+            datum="msl",
         )
 
         assert result.source_type == Source.NOAA
@@ -57,6 +58,7 @@ class TestResolveNoaa:
             begin_date=datetime.date(2026, 4, 15),
             end_date=datetime.date(2026, 4, 15),
             source=Source.AUTO,
+            datum="msl",
         )
 
         assert result.source_type == Source.MODEL
@@ -73,6 +75,7 @@ class TestResolveNoaa:
                 begin_date=datetime.date(2026, 4, 15),
                 end_date=datetime.date(2026, 4, 15),
                 source=Source.NOAA,
+                datum="msl",
             )
 
 
@@ -193,6 +196,7 @@ class TestResolveModel:
             begin_date=datetime.date(2026, 4, 15),
             end_date=datetime.date(2026, 4, 15),
             source=Source.MODEL,
+            datum="msl",
         )
 
         assert result.source_type == Source.MODEL
@@ -212,6 +216,7 @@ class TestResolveModel:
                 begin_date=datetime.date(2026, 4, 15),
                 end_date=datetime.date(2026, 4, 15),
                 source=Source.MODEL,
+                datum="msl",
             )
 
     @patch("tides.resolver.compute_tides")
@@ -225,6 +230,7 @@ class TestResolveModel:
                 begin_date=datetime.date(2026, 4, 15),
                 end_date=datetime.date(2026, 4, 15),
                 source=Source.MODEL,
+                datum="msl",
             )
         assert exc_info.value.code == 2
 
@@ -244,6 +250,7 @@ class TestResolveExplicitNoaaHappyPath:
             begin_date=datetime.date(2026, 4, 15),
             end_date=datetime.date(2026, 4, 15),
             source=Source.NOAA,
+            datum="msl",
         )
 
         assert result.source_type == Source.NOAA
@@ -267,6 +274,7 @@ class TestResolveExplicitModelPath:
             begin_date=datetime.date(2026, 4, 15),
             end_date=datetime.date(2026, 4, 15),
             source=Source.MODEL,
+            datum="msl",
         )
 
         assert result.source_type == Source.MODEL
@@ -276,3 +284,157 @@ class TestResolveExplicitModelPath:
         assert result.station_distance_km is None
         assert result.coordinate == coord
         assert len(result.days) == 1
+
+
+class TestResolveStation:
+    @patch("tides.resolver._resolve_station")
+    def test_station_source_happy_path(self, mock_resolve_station):
+        mock_resolve_station.return_value = TideResult(
+            coordinate=Coordinate(lat=-3.7, lon=-38.5),
+            source_type=Source.STATION,
+            station_id="fortaleza",
+            station_name="Fortaleza",
+            station_distance_km=5.0,
+            model_name=None,
+            days=[TideDay(date=datetime.date(2026, 4, 15), events=SAMPLE_NOAA_EVENTS)],
+        )
+        coord = Coordinate(lat=-3.7, lon=-38.5)
+        result = resolve_tides(
+            coord,
+            begin_date=datetime.date(2026, 4, 15),
+            end_date=datetime.date(2026, 4, 15),
+            source=Source.STATION,
+            datum="msl",
+        )
+        assert result.source_type == Source.STATION
+        assert result.station_name == "Fortaleza"
+
+    @patch("tides.resolver._resolve_station")
+    def test_station_source_not_found(self, mock_resolve_station):
+        mock_resolve_station.return_value = None
+        coord = Coordinate(lat=0.0, lon=0.0)
+        with pytest.raises(SystemExit) as exc_info:
+            resolve_tides(
+                coord,
+                begin_date=datetime.date(2026, 4, 15),
+                end_date=datetime.date(2026, 4, 15),
+                source=Source.STATION,
+                datum="msl",
+            )
+        assert exc_info.value.code == 1
+
+
+class TestApplyDatum:
+    def test_msl_is_noop(self):
+        result = TideResult(
+            coordinate=Coordinate(lat=40.7, lon=-74.0),
+            source_type=Source.MODEL,
+            station_id=None,
+            station_name=None,
+            station_distance_km=None,
+            model_name="GOT5.6",
+            days=[
+                TideDay(
+                    date=datetime.date(2026, 4, 15),
+                    events=[
+                        TideEvent(
+                            time=datetime.datetime(
+                                2026, 4, 15, 12, 0, tzinfo=datetime.timezone.utc
+                            ),
+                            height=0.5,
+                        )
+                    ],
+                )
+            ],
+        )
+        out = _apply_datum(result, "msl", "GOT5.6")
+        assert out.days[0].events[0].height == 0.5
+        assert out.datum == "msl"
+
+    @patch("tides.datums.get_model_datums")
+    def test_mllw_shifts_heights(self, mock_datums):
+        mock_datums.return_value = {"mllw": -0.5, "msl": 0.0}
+        result = TideResult(
+            coordinate=Coordinate(lat=40.7, lon=-74.0),
+            source_type=Source.MODEL,
+            station_id=None,
+            station_name=None,
+            station_distance_km=None,
+            model_name="GOT5.6",
+            days=[
+                TideDay(
+                    date=datetime.date(2026, 4, 15),
+                    events=[
+                        TideEvent(
+                            time=datetime.datetime(
+                                2026, 4, 15, 12, 0, tzinfo=datetime.timezone.utc
+                            ),
+                            height=0.5,
+                        )
+                    ],
+                )
+            ],
+        )
+        out = _apply_datum(result, "mllw", "GOT5.6")
+        # height_mllw = 0.5 - (-0.5) = 1.0
+        assert abs(out.days[0].events[0].height - 1.0) < 0.001
+        assert out.datum == "mllw"
+
+    @patch("tides.stations.load_station", return_value={"datums": {"MSL": 0, "MLLW": -0.4}})
+    @patch(
+        "tides.stations.find_nearest_station",
+        return_value=({"id": "test", "name": "Test", "file": "noaa/test.json"}, 1.0),
+    )
+    @patch("tides.stations.get_station_index", return_value=[])
+    def test_uses_station_datums_when_available(self, mock_idx, mock_find, mock_load):
+        result = TideResult(
+            coordinate=Coordinate(lat=40.7, lon=-74.0),
+            source_type=Source.STATION,
+            station_id="test",
+            station_name="Test",
+            station_distance_km=1.0,
+            model_name=None,
+            days=[
+                TideDay(
+                    date=datetime.date(2026, 4, 15),
+                    events=[
+                        TideEvent(
+                            time=datetime.datetime(
+                                2026, 4, 15, 12, 0, tzinfo=datetime.timezone.utc
+                            ),
+                            height=0.5,
+                        )
+                    ],
+                )
+            ],
+        )
+        out = _apply_datum(result, "mllw", "GOT5.6")
+        # height_mllw = 0.5 - (-0.4) = 0.9
+        assert abs(out.days[0].events[0].height - 0.9) < 0.001
+
+
+class TestAutoResolution:
+    @patch("tides.resolver._resolve_station")
+    @patch("tides.resolver._resolve_noaa")
+    @patch("tides.resolver.get_stations")
+    def test_auto_falls_through_to_station(self, mock_get, mock_noaa, mock_station):
+        """When NOAA fails, auto should try station before model."""
+        mock_get.return_value = []
+        mock_noaa.return_value = None
+        mock_station.return_value = TideResult(
+            coordinate=Coordinate(lat=-3.7, lon=-38.5),
+            source_type=Source.STATION,
+            station_id="fort",
+            station_name="Fortaleza",
+            station_distance_km=5.0,
+            model_name=None,
+            days=[TideDay(date=datetime.date(2026, 4, 15), events=SAMPLE_NOAA_EVENTS)],
+        )
+        result = resolve_tides(
+            Coordinate(lat=-3.7, lon=-38.5),
+            begin_date=datetime.date(2026, 4, 15),
+            end_date=datetime.date(2026, 4, 15),
+            datum="msl",
+        )
+        assert result.source_type == Source.STATION
+        mock_station.assert_called_once()

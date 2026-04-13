@@ -15,6 +15,7 @@ dependencies = [
     "h5py>=3.9",
     "httpx>=0.25",
     "timezonefinder>=6.2",
+    "astral>=3.2",
 ]
 
 [project.optional-dependencies]
