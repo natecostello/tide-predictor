@@ -7,7 +7,7 @@
 Computes tidal datums (LAT, MLLW, MLW, MSL, MHW, MHHW, HAT) from either station data or a 19-year model prediction.
 
 **Supported datums** (enum):
-`lat`, `mllw`, `mlw`, `msl`, `mhw`, `mhhw`, `hat`
+`lat`, `mllw`, `mlw`, `msl`, `mtl`, `mhw`, `mhhw`, `hat`
 
 **Two datum resolution paths:**
 

@@ -289,14 +289,17 @@ class TestResolveExplicitModelPath:
 class TestResolveStation:
     @patch("tides.resolver._resolve_station")
     def test_station_source_happy_path(self, mock_resolve_station):
-        mock_resolve_station.return_value = TideResult(
-            coordinate=Coordinate(lat=-3.7, lon=-38.5),
-            source_type=Source.STATION,
-            station_id="fortaleza",
-            station_name="Fortaleza",
-            station_distance_km=5.0,
-            model_name=None,
-            days=[TideDay(date=datetime.date(2026, 4, 15), events=SAMPLE_NOAA_EVENTS)],
+        mock_resolve_station.return_value = (
+            TideResult(
+                coordinate=Coordinate(lat=-3.7, lon=-38.5),
+                source_type=Source.STATION,
+                station_id="fortaleza",
+                station_name="Fortaleza",
+                station_distance_km=5.0,
+                model_name=None,
+                days=[TideDay(date=datetime.date(2026, 4, 15), events=SAMPLE_NOAA_EVENTS)],
+            ),
+            {"chart_datum": "LAT", "datums": {"MSL": 0.0, "LAT": -1.6}},
         )
         coord = Coordinate(lat=-3.7, lon=-38.5)
         result = resolve_tides(
@@ -380,13 +383,13 @@ class TestApplyDatum:
         assert abs(out.days[0].events[0].height - 1.0) < 0.001
         assert out.datum == "mllw"
 
-    @patch("tides.stations.load_station", return_value={"datums": {"MSL": 0, "MLLW": -0.4}})
-    @patch(
-        "tides.stations.find_nearest_station",
-        return_value=({"id": "test", "name": "Test", "file": "noaa/test.json"}, 1.0),
-    )
-    @patch("tides.stations.get_station_index", return_value=[])
-    def test_uses_station_datums_when_available(self, mock_idx, mock_find, mock_load):
+    def test_uses_station_datums_when_available(self):
+        """Station heights are relative to chart_datum. Converting to another datum
+        should use the station's published datum offsets."""
+        station_data = {
+            "chart_datum": "LAT",
+            "datums": {"MSL": 0.0, "LAT": -1.6, "MLLW": -0.9},
+        }
         result = TideResult(
             coordinate=Coordinate(lat=40.7, lon=-74.0),
             source_type=Source.STATION,
@@ -402,15 +405,17 @@ class TestApplyDatum:
                             time=datetime.datetime(
                                 2026, 4, 15, 12, 0, tzinfo=datetime.timezone.utc
                             ),
-                            height=0.5,
+                            height=2.5,  # 2.5m relative to LAT
                         )
                     ],
                 )
             ],
         )
-        out = _apply_datum(result, "mllw", "GOT5.6")
-        # height_mllw = 0.5 - (-0.4) = 0.9
-        assert abs(out.days[0].events[0].height - 0.9) < 0.001
+        out = _apply_datum(result, "mllw", "GOT5.6", station=station_data)
+        # LAT=-1.6, MLLW=-0.9, shift = MLLW - LAT = -0.9 - (-1.6) = 0.7
+        # height_mllw = 2.5 - 0.7 = 1.8
+        assert abs(out.days[0].events[0].height - 1.8) < 0.001
+        assert out.datum == "mllw"
 
 
 class TestAutoResolution:
@@ -421,14 +426,17 @@ class TestAutoResolution:
         """When NOAA fails, auto should try station before model."""
         mock_get.return_value = []
         mock_noaa.return_value = None
-        mock_station.return_value = TideResult(
-            coordinate=Coordinate(lat=-3.7, lon=-38.5),
-            source_type=Source.STATION,
-            station_id="fort",
-            station_name="Fortaleza",
-            station_distance_km=5.0,
-            model_name=None,
-            days=[TideDay(date=datetime.date(2026, 4, 15), events=SAMPLE_NOAA_EVENTS)],
+        mock_station.return_value = (
+            TideResult(
+                coordinate=Coordinate(lat=-3.7, lon=-38.5),
+                source_type=Source.STATION,
+                station_id="fort",
+                station_name="Fortaleza",
+                station_distance_km=5.0,
+                model_name=None,
+                days=[TideDay(date=datetime.date(2026, 4, 15), events=SAMPLE_NOAA_EVENTS)],
+            ),
+            {"chart_datum": "LAT", "datums": {"MSL": 0.0, "LAT": -1.6}},
         )
         result = resolve_tides(
             Coordinate(lat=-3.7, lon=-38.5),

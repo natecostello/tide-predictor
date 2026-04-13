@@ -274,7 +274,7 @@ def get(
         "got5.6", "--model", "-m", help="Tide model: got5.6, eot20, fes2022"
     ),
     datum: str = typer.Option(
-        "mllw", "--datum", help="Height datum: mllw, mlw, msl, mhw, mhhw, lat, hat"
+        "mllw", "--datum", help="Height datum: mllw, mlw, msl, mtl, mhw, mhhw, lat, hat"
     ),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Show source details"),
 ) -> None:
