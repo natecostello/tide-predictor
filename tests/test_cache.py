@@ -374,6 +374,17 @@ class TestGetCacheInfo:
                 got_item = next(i for i in info["model_cache"]["items"] if i["name"] == "GOT5.6")
                 assert got_item["size"] == 1000
 
+    def test_detects_station_database(self, tmp_path):
+        with patch.dict(os.environ, {"XDG_CACHE_HOME": str(tmp_path)}):
+            cache_dir = tmp_path / "tides"
+            stations_dir = cache_dir / "stations" / "noaa"
+            stations_dir.mkdir(parents=True)
+            (stations_dir / "1234.json").write_text("{}")
+            with patch("tides.cache._get_pytmd_data_dir", return_value=tmp_path / "pytmd"):
+                info = get_cache_info()
+                names = [i["name"] for i in info["app_cache"]["items"]]
+                assert "Station database" in names
+
 
 class TestClearCache:
     def test_clear_specific_model(self, tmp_path):

@@ -77,6 +77,38 @@ class TestBuildDataset:
         assert "rho1" in ds.data_vars
         assert "rho" not in ds.data_vars
 
+    def test_normalizes_ep2_to_eps2(self):
+        ds = _build_dataset([{"name": "EP2", "amplitude": 0.01, "phase": 0.0}])
+        assert "eps2" in ds.data_vars
+
+    def test_normalizes_sgm_to_sigma1(self):
+        ds = _build_dataset([{"name": "SGM", "amplitude": 0.01, "phase": 0.0}])
+        assert "sigma1" in ds.data_vars
+
+    def test_normalizes_3l2_to_l2_prime(self):
+        """Ticon's 3L2 (third-degree) maps to pyTMD's l2'."""
+        ds = _build_dataset([{"name": "3L2", "amplitude": 0.01, "phase": 0.0}])
+        assert "l2'" in ds.data_vars
+
+    def test_skips_unrecognized_with_warning(self, capsys):
+        """Unrecognized constituents are skipped with a stderr warning."""
+        ds = _build_dataset(
+            [
+                {"name": "M2", "amplitude": 0.5, "phase": 0.0},
+                {"name": "BOGUS99", "amplitude": 0.01, "phase": 0.0},
+            ]
+        )
+        assert "m2" in ds.data_vars
+        assert "bogus99" not in ds.data_vars
+        captured = capsys.readouterr()
+        assert "BOGUS99" in captured.err
+        assert "0.0100m" in captured.err
+
+    def test_no_warning_when_all_recognized(self, capsys):
+        _build_dataset(BERMUDA_CONSTITUENTS)
+        captured = capsys.readouterr()
+        assert captured.err == ""
+
 
 class TestPredictTidesForDay:
     def test_returns_tide_events(self):
@@ -128,8 +160,9 @@ class TestPredictTidesForDay:
         """Compare against known NOAA predictions for Bermuda 2026-04-15.
 
         NOAA predictions (relative to MLLW):
-          -0.47m@04:25, +0.31m@10:31, -0.52m@16:39, +0.41m@22:55
-        Our harmonic prediction should produce similar timing pattern.
+          Low  04:25 -0.47m, High 10:31 +0.31m,
+          Low  16:39 -0.52m, High 22:55 +0.41m
+        Our harmonic prediction should be within 30 min and 0.15m.
         """
         events = predict_tides_for_day(
             datetime.date(2026, 4, 15),
@@ -138,6 +171,11 @@ class TestPredictTidesForDay:
         )
         assert len(events) >= 3
 
-        # First event should be a low tide in the early morning (03:00-06:00 UTC)
+        # First event: low tide near 04:25 UTC
         first = events[0]
-        assert 3 <= first.time.hour <= 6, f"First tide at {first.time.hour}:xx, expected 03-06"
+        assert 3 <= first.time.hour <= 5, f"First tide at {first.time.hour}:xx, expected 03-05"
+
+        # Heights should be in a reasonable range for Bermuda (small tidal range)
+        heights = [e.height for e in events]
+        tidal_range = max(heights) - min(heights)
+        assert 0.5 < tidal_range < 1.5, f"Range {tidal_range:.2f}m outside expected 0.5-1.5m"

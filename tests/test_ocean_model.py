@@ -172,6 +172,21 @@ class TestComputeTides:
     @patch("pyTMD.predict.time_series")
     @patch("pyTMD.io.model")
     @patch("tides.cache.ensure_model_data")
+    def test_compute_tides_interp_uses_lon360(
+        self, mock_ensure, mock_model_cls, mock_predict, mock_infer
+    ):
+        """interp must use 0-360 longitude to match model grid convention."""
+        self._setup_pytmd_mocks(mock_ensure, mock_model_cls, mock_predict, mock_infer)
+        coord = Coordinate(lat=40.7, lon=-74.0)
+        compute_tides(coord, datetime.date(2025, 12, 3), datetime.date(2025, 12, 3))
+        mock_ds = mock_model_cls.return_value.open_dataset.return_value
+        _, kwargs = mock_ds.tmd.interp.call_args
+        assert kwargs.get("x") == (-74.0 % 360)  # 286.0
+
+    @patch("pyTMD.predict.infer_minor")
+    @patch("pyTMD.predict.time_series")
+    @patch("pyTMD.io.model")
+    @patch("tides.cache.ensure_model_data")
     def test_compute_tides_crops_dataset(
         self, mock_ensure, mock_model_cls, mock_predict, mock_infer
     ):
@@ -210,16 +225,43 @@ class TestComputeTides:
     @patch("pyTMD.predict.time_series")
     @patch("pyTMD.io.model")
     @patch("tides.cache.ensure_model_data")
-    def test_compute_tides_fes2022(self, mock_ensure, mock_model_cls, mock_predict, mock_infer):
-        """FES2022 model name is passed through correctly."""
+    def test_compute_tides_fes2022_uses_dask(
+        self, mock_ensure, mock_model_cls, mock_predict, mock_infer
+    ):
+        """FES models must use dask lazy loading (chunks={}) + .compute()."""
         self._setup_pytmd_mocks(mock_ensure, mock_model_cls, mock_predict, mock_infer)
+        mock_instance = mock_model_cls.return_value
+        mock_instance.format = "FES-netcdf"
+        # Make the sel().compute() chain work
+        mock_ds = mock_instance.open_dataset.return_value
+        mock_ds.sel.return_value = mock_ds
+        mock_ds.compute.return_value = mock_ds
         compute_tides(
             Coordinate(lat=40.7, lon=-74.0),
             datetime.date(2025, 12, 3),
             datetime.date(2025, 12, 3),
             model_name="FES2022",
         )
-        mock_model_cls.return_value.from_database.assert_called_once_with("FES2022")
+        mock_instance.from_database.assert_called_once_with("FES2022")
+        _, kwargs = mock_instance.open_dataset.call_args
+        assert kwargs.get("chunks") == {}
+        mock_ds.compute.assert_called_once()
+
+    @patch("pyTMD.predict.infer_minor")
+    @patch("pyTMD.predict.time_series")
+    @patch("pyTMD.io.model")
+    @patch("tides.cache.ensure_model_data")
+    def test_compute_tides_antimeridian_skips_crop(
+        self, mock_ensure, mock_model_cls, mock_predict, mock_infer
+    ):
+        """Near-prime-meridian coordinates where lon360-pad < 0 should skip crop."""
+        self._setup_pytmd_mocks(mock_ensure, mock_model_cls, mock_predict, mock_infer)
+        # lon=0.5 -> lon360=0.5, lon_min=-1.5 -> crosses_antimeridian=True
+        coord = Coordinate(lat=0.0, lon=0.5)
+        compute_tides(coord, datetime.date(2025, 12, 3), datetime.date(2025, 12, 3))
+        mock_instance = mock_model_cls.return_value
+        _, kwargs = mock_instance.open_dataset.call_args
+        assert kwargs.get("crop") is False
 
     @patch("pyTMD.predict.infer_minor")
     @patch("pyTMD.predict.time_series")

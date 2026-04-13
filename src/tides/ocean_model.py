@@ -78,20 +78,25 @@ def compute_tides(
     lon360 = coord.lon % 360
     lon_min = lon360 - pad
     lon_max = lon360 + pad
+    crosses_antimeridian = lon_min < 0 or lon_max > 360
 
     if m.format in ("FES-ascii", "FES-netcdf", "FES-native"):
         # FES models: use dask lazy loading + manual crop to avoid
         # loading all 34 constituent grids (~5 GB) into memory.
         ds = m.open_dataset(chunks={})
-        ds = ds.sel(
-            x=slice(max(lon_min, 0), min(lon_max, 360)),
-            y=slice(lat_min, lat_max),
-        ).compute()
+        if not crosses_antimeridian:
+            ds = ds.sel(
+                x=slice(lon_min, lon_max),
+                y=slice(lat_min, lat_max),
+            )
+        ds = ds.compute()
+    elif crosses_antimeridian:
+        ds = m.open_dataset(crop=False)
     else:
         bounds = [lon_min, lon_max, lat_min, lat_max]
         ds = m.open_dataset(crop=True, bounds=bounds)
 
-    local = ds.tmd.interp(x=coord.lon, y=coord.lat, extrapolate=True, cutoff=10)
+    local = ds.tmd.interp(x=lon360, y=coord.lat, extrapolate=True, cutoff=10)
 
     # Predict tidal time series using the model's correction type
     tide = pyTMD.predict.time_series(t, local, corrections=m.corrections)
