@@ -49,3 +49,4 @@ class TideResult:
     station_distance_km: float | None
     model_name: str | None
     days: list[TideDay]
+    datum: str = "msl"

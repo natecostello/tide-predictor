@@ -129,12 +129,51 @@ def _resolve_model(
     )
 
 
+def _apply_datum(result: TideResult, datum: str, model_name: str) -> TideResult:
+    """Convert tide heights to the requested datum."""
+    if datum == "msl":
+        return result
+
+    from tides.datums import datums_from_station, get_model_datums
+
+    # Get datum offsets based on source type
+    datum_offsets = None
+    if result.source_type == Source.STATION:
+        from tides.stations import find_nearest_station, get_station_index, load_station
+
+        index = get_station_index()
+        match = find_nearest_station(index, result.coordinate, max_distance_km=200)
+        if match:
+            entry, _ = match
+            station = load_station(entry)
+            datum_offsets = datums_from_station(station)
+
+    if datum_offsets is None:
+        # Model source, or station without datums — compute from model
+        datum_offsets = get_model_datums(
+            result.coordinate.lat,
+            result.coordinate.lon,
+            model_name,
+        )
+
+    offset = datum_offsets.get(datum, 0.0)
+
+    # Shift all heights: height_datum = height_msl - offset
+    for day in result.days:
+        for event in day.events:
+            event.height -= offset
+
+    result.datum = datum
+    return result
+
+
 def resolve_tides(
     coord: Coordinate,
     begin_date: datetime.date,
     end_date: datetime.date,
     source: Source = Source.AUTO,
     model_name: str = DEFAULT_MODEL,
+    datum: str = "mllw",
 ) -> TideResult:
     if source == Source.NOAA:
         stations = get_stations()
@@ -146,7 +185,7 @@ def resolve_tides(
                 file=sys.stderr,
             )
             raise SystemExit(1)
-        return result
+        return _apply_datum(result, datum, model_name)
 
     if source == Source.STATION:
         result = _resolve_station(coord, begin_date, end_date)
@@ -157,20 +196,22 @@ def resolve_tides(
                 file=sys.stderr,
             )
             raise SystemExit(1)
-        return result
+        return _apply_datum(result, datum, model_name)
 
     if source == Source.MODEL:
-        return _resolve_model(coord, begin_date, end_date, model_name=model_name)
+        result = _resolve_model(coord, begin_date, end_date, model_name=model_name)
+        return _apply_datum(result, datum, model_name)
 
     # AUTO: try NOAA API first (most accurate for US), then global station
     # database (harmonic prediction), then model fallback
     stations = get_stations()
     noaa_result = _resolve_noaa(coord, begin_date, end_date, stations)
     if noaa_result is not None:
-        return noaa_result
+        return _apply_datum(noaa_result, datum, model_name)
 
     station_result = _resolve_station(coord, begin_date, end_date)
     if station_result is not None:
-        return station_result
+        return _apply_datum(station_result, datum, model_name)
 
-    return _resolve_model(coord, begin_date, end_date, model_name=model_name)
+    result = _resolve_model(coord, begin_date, end_date, model_name=model_name)
+    return _apply_datum(result, datum, model_name)
