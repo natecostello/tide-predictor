@@ -246,6 +246,7 @@ def format_json(
         "coordinate": {"lat": result.coordinate.lat, "lon": result.coordinate.lon},
         "source": source_obj,
         "model": result.model_name,
+        "datum": result.datum.upper(),
         "timezone": tz_name,
         "unit": unit,
         "days": days_list,
@@ -272,6 +273,9 @@ def get(
     model: str = typer.Option(
         "got5.6", "--model", "-m", help="Tide model: got5.6, eot20, fes2022"
     ),
+    datum: str = typer.Option(
+        "mllw", "--datum", help="Height datum: mllw, mlw, msl, mtl, mhw, mhhw, lat, hat"
+    ),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Show source details"),
 ) -> None:
     """Get tide predictions for a coastal coordinate."""
@@ -281,6 +285,16 @@ def get(
 
     if precision < 0:
         print("Error: --precision must be a non-negative integer.", file=sys.stderr)
+        raise SystemExit(1)
+
+    from tides.datums import SUPPORTED_DATUMS
+
+    datum_lower = datum.lower()
+    if datum_lower not in SUPPORTED_DATUMS:
+        print(
+            f"Error: Invalid datum '{datum}'. Expected: {', '.join(SUPPORTED_DATUMS)}",
+            file=sys.stderr,
+        )
         raise SystemExit(1)
 
     try:
@@ -304,7 +318,14 @@ def get(
     from tides.resolver import resolve_tides
 
     try:
-        result = resolve_tides(coord, begin_date, end_date, source_enum, model_name=model_name)
+        result = resolve_tides(
+            coord,
+            begin_date,
+            end_date,
+            source_enum,
+            model_name=model_name,
+            datum=datum_lower,
+        )
     except SystemExit:
         raise
     except NOAAError as e:

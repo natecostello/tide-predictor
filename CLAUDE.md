@@ -14,7 +14,7 @@ A stateless CLI for tide predictions using NOAA station data and global tidal mo
 ## CLI Interface
 
 ```
-tides get <lat,lon> [--date DATE] [--local] [--feet] [--json] [--between HH:MM:HH:MM] [--precision N] [--source auto|noaa|station|model] [--model got5.6|eot20|fes2022] [--verbose]
+tides get <lat,lon> [--date DATE] [--local] [--feet] [--json] [--between HH:MM:HH:MM] [--precision N] [--source auto|noaa|station|model] [--model got5.6|eot20|fes2022] [--datum mllw|mlw|msl|mtl|mhw|mhhw|lat|hat] [--verbose]
 tides cache [--json]
 tides cache clear [name] [--yes]
 tides fetch-model
@@ -88,6 +88,7 @@ src/tides/
 ├── ocean_model.py  # pyTMD wrapper, extrema finding
 ├── resolver.py     # Source selection logic (auto/noaa/model)
 ├── cache.py        # XDG cache management, data downloads, cache info/clear
+├── datums.py       # Tidal datum computation (LAT/MLLW/MHW/HAT) and caching
 ├── harmonics.py    # Station harmonic prediction via pyTMD
 ├── stations.py     # Global station database (openwatersio/tide-database)
 └── timezone.py     # Coordinate to timezone mapping
