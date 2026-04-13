@@ -111,7 +111,7 @@ def compute_datums_from_model(
     )
 
     tide = pyTMD.predict.time_series(t, local, corrections=m.corrections)
-    minor = pyTMD.predict.infer_minor(t, local, corrections=m.corrections)
+    minor = pyTMD.predict.infer_minor(t, local, corrections=m.corrections, minor=m.minor)
     elevations = (
         np.atleast_1d(np.asarray(tide)).flatten() + np.atleast_1d(np.asarray(minor)).flatten()
     )

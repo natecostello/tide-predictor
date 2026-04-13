@@ -65,7 +65,7 @@ tides cache clear eot20 --yes
 | `--precision` | `-p` | Decimal places for height (default: 1) |
 | `--source` | `-s` | Data source: auto, noaa, station, model (default: auto) |
 | `--model` | `-m` | Tide model: got5.6, eot20, fes2022 (default: got5.6) |
-| `--datum` | | Height datum: mllw, mlw, msl, mhw, mhhw, lat, hat (default: mllw) |
+| `--datum` | | Height datum: mllw, mlw, msl, mtl, mhw, mhhw, lat, hat (default: mllw) |
 | `--verbose` | `-v` | Show source details |
 | `--version` | | Show version |
 

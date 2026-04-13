@@ -26,7 +26,7 @@ Computes tidal datums (LAT, MLLW, MLW, MSL, MHW, MHHW, HAT) from either station 
 ### CLI changes
 
 ```
-tides get <lat,lon> [--datum mllw|mlw|msl|mhw|mhhw|lat|hat]
+tides get <lat,lon> [--datum mllw|mlw|msl|mtl|mhw|mhhw|lat|hat]
 ```
 
 Default: `mllw` (matches tides4fishing/Nautide). `--datum msl` recovers old behavior.
@@ -40,7 +40,7 @@ Where `datum_offset_msl` is the target datum's elevation relative to MSL (negati
 
 ### Model changes
 
-`TideResult` gets a new field `datum: str` to record which datum the heights are referenced to. Output formatters include the datum in `--json` and `--verbose` output.
+`TideResult` gets a new field `datum: str` to record which datum the heights are referenced to. Output formatters include the datum in `--json` output.
 
 ## 2. Test Coverage Targets
 

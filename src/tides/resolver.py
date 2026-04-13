@@ -145,9 +145,13 @@ def _apply_datum(
     from tides.datums import datums_from_station, get_model_datums
 
     # Determine current datum and get offset table
-    if result.source_type in (Source.STATION, Source.NOAA) and station:
+    if result.source_type in (Source.STATION,) and station:
         datum_offsets = datums_from_station(station)
         current_datum = station.get("chart_datum", "MSL").lower()
+    elif result.source_type == Source.NOAA:
+        # NOAA predictions are requested relative to MTL
+        datum_offsets = None
+        current_datum = "mtl"
     else:
         datum_offsets = None
         current_datum = "msl"
