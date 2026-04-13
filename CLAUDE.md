@@ -1,11 +1,11 @@
 # Tides CLI
 
-A stateless CLI for tide predictions using NOAA station data and the GOT5.6 global tidal model.
+A stateless CLI for tide predictions using NOAA station data and global tidal models (GOT5.6, EOT20, FES2022).
 
 ## Architecture
 
 - **CLI framework:** Typer (built on Click)
-- **Tidal model:** pyTMD with GOT5.6 (NASA Goddard Ocean Tide)
+- **Tidal models:** pyTMD with GOT5.6 (default), EOT20, FES2022
 - **Station data:** NOAA CO-OPS API (US tide stations)
 - **Timezone:** timezonefinder (offline lat/long to timezone)
 - **Package management:** uv
@@ -14,7 +14,9 @@ A stateless CLI for tide predictions using NOAA station data and the GOT5.6 glob
 ## CLI Interface
 
 ```
-tides get <lat,lon> [--date DATE] [--local] [--feet] [--json] [--between HH:MM:HH:MM] [--precision N] [--source auto|noaa|model] [--verbose]
+tides get <lat,lon> [--date DATE] [--local] [--feet] [--json] [--between HH:MM:HH:MM] [--precision N] [--source auto|noaa|station|model] [--model got5.6|eot20|fes2022] [--verbose]
+tides cache [--json]
+tides cache clear [name] [--yes]
 tides fetch-model
 tides --version
 ```
@@ -85,6 +87,8 @@ src/tides/
 ├── noaa.py         # NOAA CO-OPS API client
 ├── ocean_model.py  # pyTMD wrapper, extrema finding
 ├── resolver.py     # Source selection logic (auto/noaa/model)
-├── cache.py        # XDG cache management, data downloads
+├── cache.py        # XDG cache management, data downloads, cache info/clear
+├── harmonics.py    # Station harmonic prediction via pyTMD
+├── stations.py     # Global station database (openwatersio/tide-database)
 └── timezone.py     # Coordinate to timezone mapping
 ```

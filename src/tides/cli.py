@@ -15,6 +15,13 @@ app = typer.Typer(
     add_completion=False,
 )
 
+cache_app = typer.Typer(
+    name="cache",
+    help="Manage cached tidal data and model files.",
+    add_completion=False,
+)
+app.add_typer(cache_app, name="cache")
+
 
 def parse_coordinate(args: list[str]) -> Coordinate:
     # Strip -- separator that Typer may pass through
@@ -262,7 +269,9 @@ def get(
     source: str = typer.Option(
         "auto", "--source", "-s", help="Data source: auto, noaa, station, model"
     ),
-    model: str = typer.Option("got5.6", "--model", "-m", help="Tide model: got5.6, eot20"),
+    model: str = typer.Option(
+        "got5.6", "--model", "-m", help="Tide model: got5.6, eot20, fes2022"
+    ),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Show source details"),
 ) -> None:
     """Get tide predictions for a coastal coordinate."""
@@ -353,6 +362,75 @@ def fetch_model() -> None:
             file=sys.stderr,
         )
         raise SystemExit(2)
+
+
+@cache_app.callback(invoke_without_command=True)
+def cache_show(
+    ctx: typer.Context,
+    json_output: bool = typer.Option(False, "--json", "-j", help="Output as JSON"),
+) -> None:
+    """Show cache locations and sizes."""
+    if ctx.invoked_subcommand is not None:
+        return
+
+    from tides.cache import format_size, get_cache_info
+
+    info = get_cache_info()
+
+    if json_output:
+        print(json.dumps(info, indent=2))
+        return
+
+    app_info = info["app_cache"]
+    model_info = info["model_cache"]
+
+    app_total = sum(i["size"] for i in app_info["items"])
+    model_total = sum(i["size"] for i in model_info["items"])
+
+    print(f"App cache: {app_info['path']}")
+    if app_info["items"]:
+        for item in app_info["items"]:
+            print(f"  {item['name']:<25} {format_size(item['size']):>10}")
+    else:
+        print("  (empty)")
+
+    print(f"\nModel cache: {model_info['path']}")
+    if model_info["items"]:
+        for item in model_info["items"]:
+            print(f"  {item['name']:<25} {format_size(item['size']):>10}")
+    else:
+        print("  (empty)")
+
+    print(f"\nTotal: {format_size(app_total + model_total)}")
+
+
+@cache_app.command("clear")
+def cache_clear(
+    name: Optional[str] = typer.Argument(
+        None,
+        help="Item to clear: stations, got5.5, got5.6, eot20, fes2022, hamtide11",
+    ),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt"),
+) -> None:
+    """Clear cached data. Omit name to clear everything."""
+    from tides.cache import clear_cache, format_size
+
+    target = "all cached data" if name is None else f"'{name}' cache"
+
+    if not yes and not typer.confirm(f"Clear {target}?", default=False):
+        print("Cancelled.")
+        raise typer.Exit(code=0)
+
+    try:
+        freed = clear_cache(name)
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        raise SystemExit(1)
+    except OSError as e:
+        print(f"Error clearing {target}: {e}", file=sys.stderr)
+        raise SystemExit(2)
+
+    print(f"Cleared {target} ({format_size(freed)} freed).")
 
 
 def version_callback(value: bool) -> None:

@@ -1,6 +1,6 @@
 # tides
 
-A command-line tool for tide predictions using NOAA station data and the GOT5.6 global tidal model.
+A command-line tool for tide predictions using NOAA station data and global tidal models (GOT5.6, EOT20, FES2022).
 
 ## Install
 
@@ -40,8 +40,17 @@ tides get 40.7128,-74.0060 --source noaa
 # Force global model
 tides get -8.05,-34.87 --source model
 
+# Use FES2022 model (34 constituents, must be pre-downloaded)
+tides get 35.9,-75.6 --source model --model fes2022
+
 # Pre-download model data
 tides fetch-model
+
+# View cache sizes
+tides cache
+
+# Clear specific model cache
+tides cache clear eot20 --yes
 ```
 
 ## Options
@@ -54,8 +63,8 @@ tides fetch-model
 | `--json` | `-j` | JSON output |
 | `--between` | `-b` | Time window filter (HH:MM:HH:MM) |
 | `--precision` | `-p` | Decimal places for height (default: 1) |
-| `--source` | `-s` | Data source: auto, noaa, model (default: auto) |
-| `--model` | `-m` | Tide model: got5.6, eot20 (default: got5.6) |
+| `--source` | `-s` | Data source: auto, noaa, station, model (default: auto) |
+| `--model` | `-m` | Tide model: got5.6, eot20, fes2022 (default: got5.6) |
 | `--verbose` | `-v` | Show source details |
 | `--version` | | Show version |
 
@@ -66,6 +75,10 @@ tides fetch-model
 **GOT5.6** (global, default): NASA Goddard Ocean Tide model at 0.5° resolution. Used as fallback for locations outside NOAA coverage. Model data is auto-downloaded on first use.
 
 **EOT20** (global, `--model eot20`): Empirical Ocean Tide model at 0.125° resolution (4x finer than GOT5.6). Better accuracy for coastal locations. Auto-downloaded on first use (~2.3GB).
+
+**FES2022** (global, `--model fes2022`): FES2022b ocean tide model with 34 tidal constituents. Highest fidelity available. Must be manually downloaded from [AVISO](https://www.aviso.altimetry.fr/en/data/products/auxiliary-products/global-tide-fes.html) (~5GB on disk).
+
+**Global station database** (~8,289 stations): Harmonic predictions from the openwatersio/tide-database. Auto-selected when within 200km in `auto` source mode, or via `--source station`.
 
 ## Development
 

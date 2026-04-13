@@ -1,15 +1,22 @@
 import json
 import os
 import time
+from pathlib import Path
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from tides.cache import (
     STATION_CACHE_MAX_AGE_DAYS,
+    _dir_size,
     _model_exists,
+    clear_cache,
     ensure_model_data,
     fetch_all,
     fetch_station_data,
+    format_size,
     get_cache_dir,
+    get_cache_info,
     get_model_dir,
     get_station_cache_path,
     get_stations,
@@ -199,6 +206,27 @@ class TestEnsureModelData:
                     assert calls[0] == ((), {"model": "GOT5.5", "format": "netcdf"})
                     assert calls[1] == ((), {"model": "GOT5.6", "format": "netcdf"})
 
+    def test_fes2022_missing_prints_instructions(self, capsys):
+        with patch("tides.cache._model_exists", return_value=False):
+            with patch("tides.cache._get_pytmd_data_dir", return_value=Path("/fake/pytmd")):
+                with pytest.raises(SystemExit) as exc_info:
+                    ensure_model_data("FES2022")
+                assert exc_info.value.code == 2
+                captured = capsys.readouterr()
+                assert "FES2022" in captured.err
+                assert "manually" in captured.err
+                assert "AVISO" in captured.err
+
+    def test_hamtide11_missing_prints_instructions(self, capsys):
+        with patch("tides.cache._model_exists", return_value=False):
+            with patch("tides.cache._get_pytmd_data_dir", return_value=Path("/fake/pytmd")):
+                with pytest.raises(SystemExit) as exc_info:
+                    ensure_model_data("HAMTIDE11")
+                assert exc_info.value.code == 2
+                captured = capsys.readouterr()
+                assert "HAMTIDE11" in captured.err
+                assert "manually" in captured.err
+
 
 class TestFetchStationData:
     def test_fetches_parses_and_caches(self, tmp_path):
@@ -273,3 +301,130 @@ class TestFetchAll:
                 assert "Fetching NOAA station list" in captured.err
                 assert "GOT5.6" in captured.err
                 assert "Done" in captured.err
+
+
+class TestFormatSize:
+    def test_bytes(self):
+        assert format_size(500) == "500 B"
+
+    def test_kilobytes(self):
+        assert format_size(2048) == "2.0 KB"
+
+    def test_megabytes(self):
+        assert format_size(5 * 1024 * 1024) == "5.0 MB"
+
+    def test_gigabytes(self):
+        assert format_size(3 * 1024 * 1024 * 1024) == "3.0 GB"
+
+    def test_zero(self):
+        assert format_size(0) == "0 B"
+
+
+class TestDirSize:
+    def test_empty_dir(self, tmp_path):
+        assert _dir_size(tmp_path) == 0
+
+    def test_nonexistent_dir(self, tmp_path):
+        assert _dir_size(tmp_path / "nope") == 0
+
+    def test_with_files(self, tmp_path):
+        (tmp_path / "a.txt").write_text("hello")
+        (tmp_path / "b.txt").write_text("world!")
+        assert _dir_size(tmp_path) == 11
+
+    def test_nested_files(self, tmp_path):
+        sub = tmp_path / "sub"
+        sub.mkdir()
+        (sub / "c.txt").write_bytes(b"x" * 100)
+        assert _dir_size(tmp_path) == 100
+
+
+class TestGetCacheInfo:
+    def test_returns_structure(self, tmp_path):
+        with patch.dict(os.environ, {"XDG_CACHE_HOME": str(tmp_path)}):
+            with patch("tides.cache._get_pytmd_data_dir", return_value=tmp_path / "pytmd"):
+                info = get_cache_info()
+                assert "app_cache" in info
+                assert "model_cache" in info
+                assert "path" in info["app_cache"]
+                assert "items" in info["app_cache"]
+
+    def test_detects_noaa_stations(self, tmp_path):
+        with patch.dict(os.environ, {"XDG_CACHE_HOME": str(tmp_path)}):
+            # Create station cache file
+            cache_dir = tmp_path / "tides"
+            cache_dir.mkdir(parents=True)
+            (cache_dir / "noaa_stations.json").write_text("[]")
+            with patch("tides.cache._get_pytmd_data_dir", return_value=tmp_path / "pytmd"):
+                info = get_cache_info()
+                names = [i["name"] for i in info["app_cache"]["items"]]
+                assert "NOAA station list" in names
+
+    def test_detects_model_dirs(self, tmp_path):
+        pytmd_dir = tmp_path / "pytmd"
+        # Create a GOT5.6 dir with a file
+        got_dir = pytmd_dir / "GOT5.6"
+        got_dir.mkdir(parents=True)
+        (got_dir / "m2.nc").write_bytes(b"x" * 1000)
+        with patch.dict(os.environ, {"XDG_CACHE_HOME": str(tmp_path)}):
+            with patch("tides.cache._get_pytmd_data_dir", return_value=pytmd_dir):
+                info = get_cache_info()
+                names = [i["name"] for i in info["model_cache"]["items"]]
+                assert "GOT5.6" in names
+                got_item = next(i for i in info["model_cache"]["items"] if i["name"] == "GOT5.6")
+                assert got_item["size"] == 1000
+
+    def test_detects_station_database(self, tmp_path):
+        with patch.dict(os.environ, {"XDG_CACHE_HOME": str(tmp_path)}):
+            cache_dir = tmp_path / "tides"
+            stations_dir = cache_dir / "stations" / "noaa"
+            stations_dir.mkdir(parents=True)
+            (stations_dir / "1234.json").write_text("{}")
+            with patch("tides.cache._get_pytmd_data_dir", return_value=tmp_path / "pytmd"):
+                info = get_cache_info()
+                names = [i["name"] for i in info["app_cache"]["items"]]
+                assert "Station database" in names
+
+
+class TestClearCache:
+    def test_clear_specific_model(self, tmp_path):
+        pytmd_dir = tmp_path / "pytmd"
+        got_dir = pytmd_dir / "GOT5.6"
+        got_dir.mkdir(parents=True)
+        (got_dir / "m2.nc").write_bytes(b"x" * 500)
+        with patch.dict(os.environ, {"XDG_CACHE_HOME": str(tmp_path)}):
+            with patch("tides.cache._get_pytmd_data_dir", return_value=pytmd_dir):
+                freed = clear_cache("got5.6")
+                assert freed == 500
+                assert not got_dir.exists()
+
+    def test_clear_stations(self, tmp_path):
+        with patch.dict(os.environ, {"XDG_CACHE_HOME": str(tmp_path)}):
+            cache_dir = tmp_path / "tides"
+            stations_dir = cache_dir / "stations"
+            stations_dir.mkdir(parents=True)
+            (stations_dir / "test.json").write_text("{}")
+            (cache_dir / "noaa_stations.json").write_text("[]")
+            freed = clear_cache("stations")
+            assert freed > 0
+            assert not stations_dir.exists()
+            assert not (cache_dir / "noaa_stations.json").exists()
+
+    def test_clear_all(self, tmp_path):
+        pytmd_dir = tmp_path / "pytmd"
+        got_dir = pytmd_dir / "GOT5.6"
+        got_dir.mkdir(parents=True)
+        (got_dir / "m2.nc").write_bytes(b"x" * 100)
+        with patch.dict(os.environ, {"XDG_CACHE_HOME": str(tmp_path)}):
+            cache_dir = tmp_path / "tides"
+            cache_dir.mkdir(parents=True)
+            (cache_dir / "noaa_stations.json").write_text("[]")
+            with patch("tides.cache._get_pytmd_data_dir", return_value=pytmd_dir):
+                freed = clear_cache(None)
+                assert freed > 0
+                assert not cache_dir.exists()
+                assert not got_dir.exists()
+
+    def test_clear_invalid_name_raises(self):
+        with pytest.raises(ValueError, match="Unknown cache name"):
+            clear_cache("bogus")

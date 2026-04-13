@@ -6,8 +6,8 @@ from scipy.signal import find_peaks
 from tides.models import Coordinate, TideEvent
 
 DEFAULT_MODEL = "GOT5.6"
-SUPPORTED_MODELS = {"GOT5.6", "GOT5.5", "EOT20"}
-ELEVATION_INTERVAL_MINUTES = 6
+SUPPORTED_MODELS = {"GOT5.6", "GOT5.5", "EOT20", "FES2022"}
+ELEVATION_INTERVAL_MINUTES = 1
 
 # Minimum separation between peaks in minutes. Tidal extrema are typically
 # ~6 hours apart; 2 hours is a conservative minimum to filter noise.
@@ -68,11 +68,35 @@ def compute_tides(
     # pyTMD predict.time_series expects days since 1992-01-01
     t = np.array([(dt - _PYTMD_PREDICT_EPOCH).total_seconds() / 86400.0 for dt in times])
 
-    # Load model and interpolate constituents at the coordinate
+    # Load model and interpolate constituents at the coordinate.
     m = pyTMD.io.model()
     m.from_database(model_name)
-    ds = m.open_dataset(crop=False)
-    local = ds.tmd.interp(x=coord.lon, y=coord.lat, extrapolate=True, cutoff=10)
+    pad = 2.0  # degrees padding around target for interpolation
+    lat_min = max(coord.lat - pad, -90.0)
+    lat_max = min(coord.lat + pad, 90.0)
+    # Model grids use 0-360 longitude
+    lon360 = coord.lon % 360
+    lon_min = lon360 - pad
+    lon_max = lon360 + pad
+    crosses_antimeridian = lon_min < 0 or lon_max > 360
+
+    if m.format in ("FES-ascii", "FES-netcdf", "FES-native"):
+        # FES models: use dask lazy loading + manual crop to avoid
+        # loading all 34 constituent grids (~5 GB) into memory.
+        ds = m.open_dataset(chunks={})
+        if not crosses_antimeridian:
+            ds = ds.sel(
+                x=slice(lon_min, lon_max),
+                y=slice(lat_min, lat_max),
+            )
+        ds = ds.compute()
+    elif crosses_antimeridian:
+        ds = m.open_dataset(crop=False)
+    else:
+        bounds = [lon_min, lon_max, lat_min, lat_max]
+        ds = m.open_dataset(crop=True, bounds=bounds)
+
+    local = ds.tmd.interp(x=lon360, y=coord.lat, extrapolate=True, cutoff=10)
 
     # Predict tidal time series using the model's correction type
     tide = pyTMD.predict.time_series(t, local, corrections=m.corrections)

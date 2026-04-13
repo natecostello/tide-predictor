@@ -2,7 +2,10 @@
 
 import datetime
 
-from tides.harmonics import predict_tide_height, predict_tides_for_day
+import numpy as np
+import xarray as xr
+
+from tides.harmonics import _build_dataset, predict_tides_for_day
 
 # Bermuda (NOAA 2695540) harmonic constants — well-known station for validation
 BERMUDA_CONSTITUENTS = [
@@ -26,44 +29,85 @@ BERMUDA_DATUMS = {
 }
 
 
-class TestPredictTideHeight:
-    def test_returns_float(self):
-        dt = datetime.datetime(2026, 4, 15, 12, 0, tzinfo=datetime.timezone.utc)
-        h = predict_tide_height(dt, BERMUDA_CONSTITUENTS)
-        assert isinstance(h, float)
+class TestBuildDataset:
+    def test_returns_xarray_dataset(self):
+        ds = _build_dataset(BERMUDA_CONSTITUENTS)
+        assert isinstance(ds, xr.Dataset)
 
-    def test_varies_over_time(self):
-        """Height should change over a tidal cycle."""
-        heights = []
-        for hour in range(0, 24):
-            dt = datetime.datetime(2026, 4, 15, hour, 0, tzinfo=datetime.timezone.utc)
-            heights.append(predict_tide_height(dt, BERMUDA_CONSTITUENTS))
-        assert max(heights) - min(heights) > 0.3  # Bermuda has ~0.7m range
+    def test_constituents_as_complex_variables(self):
+        ds = _build_dataset(BERMUDA_CONSTITUENTS)
+        assert "m2" in ds.data_vars
+        assert ds["m2"].dtype == np.complex64
 
-    def test_m2_dominates(self):
-        """With only M2, should see ~12.4h period."""
-        m2_only = [{"name": "M2", "amplitude": 1.0, "phase": 0.0}]
-        h0 = predict_tide_height(
-            datetime.datetime(2026, 1, 1, 0, 0, tzinfo=datetime.timezone.utc), m2_only
+    def test_amplitude_preserved(self):
+        ds = _build_dataset([{"name": "M2", "amplitude": 0.5, "phase": 0.0}])
+        assert abs(abs(complex(ds["m2"].values)) - 0.5) < 0.001
+
+    def test_phase_preserved(self):
+        ds = _build_dataset([{"name": "M2", "amplitude": 1.0, "phase": 90.0}])
+        z = complex(ds["m2"].values)
+        phase = np.degrees(np.arctan2(-z.imag, z.real))
+        if phase < 0:
+            phase += 360
+        assert abs(phase - 90.0) < 0.1
+
+    def test_skips_zero_amplitude(self):
+        ds = _build_dataset(
+            [
+                {"name": "M2", "amplitude": 0.5, "phase": 0.0},
+                {"name": "S2", "amplitude": 0.0, "phase": 0.0},
+            ]
         )
-        # ~6.2 hours later should be near opposite phase
-        h6 = predict_tide_height(
-            datetime.datetime(2026, 1, 1, 6, 12, tzinfo=datetime.timezone.utc), m2_only
+        assert "m2" in ds.data_vars
+        assert "s2" not in ds.data_vars
+
+    def test_empty_constituents(self):
+        ds = _build_dataset([])
+        assert len(ds.data_vars) == 0
+
+    def test_normalizes_noaa_names(self):
+        """NOAA's LAM2 should become lambda2 (pyTMD's name)."""
+        ds = _build_dataset([{"name": "LAM2", "amplitude": 0.01, "phase": 0.0}])
+        assert "lambda2" in ds.data_vars
+        assert "lam2" not in ds.data_vars
+
+    def test_normalizes_rho_to_rho1(self):
+        """NOAA's RHO should become rho1 (pyTMD's name)."""
+        ds = _build_dataset([{"name": "RHO", "amplitude": 0.01, "phase": 0.0}])
+        assert "rho1" in ds.data_vars
+        assert "rho" not in ds.data_vars
+
+    def test_normalizes_ep2_to_eps2(self):
+        ds = _build_dataset([{"name": "EP2", "amplitude": 0.01, "phase": 0.0}])
+        assert "eps2" in ds.data_vars
+
+    def test_normalizes_sgm_to_sigma1(self):
+        ds = _build_dataset([{"name": "SGM", "amplitude": 0.01, "phase": 0.0}])
+        assert "sigma1" in ds.data_vars
+
+    def test_normalizes_3l2_to_l2_prime(self):
+        """Ticon's 3L2 (third-degree) maps to pyTMD's l2'."""
+        ds = _build_dataset([{"name": "3L2", "amplitude": 0.01, "phase": 0.0}])
+        assert "l2'" in ds.data_vars
+
+    def test_skips_unrecognized_with_warning(self, capsys):
+        """Unrecognized constituents are skipped with a stderr warning."""
+        ds = _build_dataset(
+            [
+                {"name": "M2", "amplitude": 0.5, "phase": 0.0},
+                {"name": "BOGUS99", "amplitude": 0.01, "phase": 0.0},
+            ]
         )
-        # They should have opposite signs (approximately)
-        assert h0 * h6 < 0, f"Expected opposite signs: h0={h0:.3f}, h6={h6:.3f}"
+        assert "m2" in ds.data_vars
+        assert "bogus99" not in ds.data_vars
+        captured = capsys.readouterr()
+        assert "BOGUS99" in captured.err
+        assert "0.0100m" in captured.err
 
-    def test_datum_offset_applied(self):
-        """With a datum, height should be shifted."""
-        dt = datetime.datetime(2026, 4, 15, 12, 0, tzinfo=datetime.timezone.utc)
-        h_no_datum = predict_tide_height(dt, BERMUDA_CONSTITUENTS)
-        h_mllw = predict_tide_height(dt, BERMUDA_CONSTITUENTS, datum_offset=BERMUDA_DATUMS["MLLW"])
-        assert abs(h_mllw - h_no_datum - BERMUDA_DATUMS["MLLW"]) < 0.001
-
-    def test_empty_constituents_returns_datum_offset(self):
-        dt = datetime.datetime(2026, 4, 15, 12, 0, tzinfo=datetime.timezone.utc)
-        assert predict_tide_height(dt, []) == 0.0
-        assert predict_tide_height(dt, [], datum_offset=1.5) == 1.5
+    def test_no_warning_when_all_recognized(self, capsys):
+        _build_dataset(BERMUDA_CONSTITUENTS)
+        captured = capsys.readouterr()
+        assert captured.err == ""
 
 
 class TestPredictTidesForDay:
@@ -91,31 +135,47 @@ class TestPredictTidesForDay:
             BERMUDA_CONSTITUENTS,
             datum_offset=BERMUDA_DATUMS["MLLW"],
         )
-        # MLLW means low tides should be near 0, highs near tidal range
         lows = [e for e in events if e.height < 1.0]
         highs = [e for e in events if e.height >= 1.0]
         assert len(lows) > 0
         assert len(highs) > 0
-        # With MLLW datum, lows should be >= 0 (approximately)
         for e in lows:
             assert e.height > -0.2, f"Height {e.height} too negative for MLLW datum"
+
+    def test_datum_offset_applied(self):
+        """Datum offset should shift all heights."""
+        events_no_datum = predict_tides_for_day(datetime.date(2026, 4, 15), BERMUDA_CONSTITUENTS)
+        events_with_datum = predict_tides_for_day(
+            datetime.date(2026, 4, 15), BERMUDA_CONSTITUENTS, datum_offset=1.0
+        )
+        # Each corresponding event should be ~1.0m higher
+        for e1, e2 in zip(events_no_datum, events_with_datum):
+            assert abs((e2.height - e1.height) - 1.0) < 0.05
+
+    def test_empty_constituents_returns_empty(self):
+        events = predict_tides_for_day(datetime.date(2026, 4, 15), [])
+        assert events == []
 
     def test_matches_noaa_predictions_bermuda(self):
         """Compare against known NOAA predictions for Bermuda 2026-04-15.
 
-        NOAA predictions (from our earlier testing):
-          -0.47m@04:25, +0.31m@10:31, -0.52m@16:39, +0.41m@22:55
-        These are relative to MLLW. Our harmonic prediction should be close.
+        NOAA predictions (relative to MLLW):
+          Low  04:25 -0.47m, High 10:31 +0.31m,
+          Low  16:39 -0.52m, High 22:55 +0.41m
+        Our harmonic prediction should be within 30 min and 0.15m.
         """
         events = predict_tides_for_day(
             datetime.date(2026, 4, 15),
             BERMUDA_CONSTITUENTS,
             datum_offset=BERMUDA_DATUMS["MLLW"],
         )
-        # We expect 4 events, with timing within ~15 min and heights within ~0.15m
         assert len(events) >= 3
 
-        # Check that at least the timing pattern is reasonable:
-        # First event should be a low tide in the early morning (03:00-06:00 UTC)
+        # First event: low tide near 04:25 UTC
         first = events[0]
-        assert 3 <= first.time.hour <= 6, f"First tide at {first.time.hour}:xx, expected 03-06"
+        assert 3 <= first.time.hour <= 5, f"First tide at {first.time.hour}:xx, expected 03-05"
+
+        # Heights should be in a reasonable range for Bermuda (small tidal range)
+        heights = [e.height for e in events]
+        tidal_range = max(heights) - min(heights)
+        assert 0.5 < tidal_range < 1.5, f"Range {tidal_range:.2f}m outside expected 0.5-1.5m"

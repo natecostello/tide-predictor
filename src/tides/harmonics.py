@@ -1,149 +1,86 @@
-"""Tidal harmonic prediction engine.
+"""Tidal harmonic prediction from station constituent data.
 
-Predicts water levels from harmonic constituent amplitudes and phases
-using pyTMD's astronomical argument computation for proper nodal corrections.
+Constructs an xarray Dataset from station harmonic constituents and
+predicts water levels using pyTMD's predict.time_series() — the same
+pipeline used by the gridded model path (ocean_model.py).
 """
 
 import datetime
 import functools
+import sys
 
 import numpy as np
 import pyTMD.constituents
+import xarray as xr
 
 from tides.models import TideEvent
 from tides.ocean_model import ELEVATION_INTERVAL_MINUTES, find_extrema
 
-# MJD of the tide epoch (1992-01-01)
-_MJD_TIDE = 48622
+# Reference epoch for pyTMD: 1992-01-01T00:00:00 UTC
+_PYTMD_EPOCH = datetime.datetime(1992, 1, 1, tzinfo=datetime.timezone.utc)
+
+# Correction type for station harmonic constants.
+# OTIS uses the standard Doodson/IHO astronomical argument conventions,
+# which match how NOAA and IHO-sourced harmonic constants are analyzed.
+STATION_CORRECTIONS = "OTIS"
+
+# Map station constituent names to pyTMD's expected names.
+# NOAA uses abbreviations (LAM2, RHO) that pyTMD doesn't recognize;
+# pyTMD uses the full IHO names (lambda2, rho1).
+_NAME_MAP: dict[str, str] = {
+    "lam2": "lambda2",
+    "rho": "rho1",
+    "ep2": "eps2",
+    "sgm": "sigma1",
+    "3l2": "l2'",
+}
+
+
+def _normalize_name(name: str) -> str:
+    """Normalize a station constituent name to pyTMD's convention."""
+    return _NAME_MAP.get(name, name)
 
 
 @functools.cache
-def _known_constituents() -> frozenset[str]:
-    """Get the set of constituent names pyTMD recognizes.
+def _is_recognized(name: str) -> bool:
+    """Check if pyTMD recognizes a constituent name."""
+    try:
+        pyTMD.constituents.coefficients_table([name])
+        return True
+    except (ValueError, KeyError):
+        return False
 
-    Tests each candidate against pyTMD's coefficient table. Any constituent
-    not in this list will be silently skipped. Expand this list if new
-    constituents appear in station databases.
+
+def _build_dataset(constituents: list[dict]) -> xr.Dataset:
+    """Build a pyTMD-compatible xarray Dataset from station harmonics.
+
+    Each constituent becomes a scalar complex64 variable:
+        z = amplitude * exp(-i * phase_radians)
+
+    This matches the format produced by pyTMD's model.open_dataset().tmd.interp().
     """
-    candidates = [
-        "m2",
-        "s2",
-        "n2",
-        "k1",
-        "o1",
-        "k2",
-        "p1",
-        "q1",
-        "m4",
-        "m6",
-        "mk3",
-        "s4",
-        "mn4",
-        "nu2",
-        "s6",
-        "mu2",
-        "2n2",
-        "oo1",
-        "lam2",
-        "s1",
-        "m1",
-        "j1",
-        "mm",
-        "ssa",
-        "sa",
-        "msf",
-        "mf",
-        "rho",
-        "t2",
-        "r2",
-        "2q1",
-        "2sm2",
-        "m3",
-        "l2",
-        "2mk3",
-        "m8",
-        "ms4",
-        "eps2",
-        "eta2",
-        "mks2",
-        "m1'",
-        "n2'",
-        "l2'",
-        "m3'",
-    ]
-    known = set()
-    for name in candidates:
-        try:
-            pyTMD.constituents.coefficients_table([name])
-            known.add(name)
-        except (ValueError, KeyError):
-            pass
-    return frozenset(known)
-
-
-def _filter_constituents(
-    constituents: list[dict],
-) -> tuple[list[str], np.ndarray, np.ndarray]:
-    """Filter constituents to those pyTMD recognizes.
-
-    Returns (names, amplitudes, phases_deg) for valid constituents only.
-    """
-    known = _known_constituents()
-    names = []
-    amps = []
-    phases = []
+    data_vars = {}
+    skipped = []
     for c in constituents:
-        name = c["name"].lower()
-        if name in known and c["amplitude"] > 0:
-            names.append(name)
-            amps.append(c["amplitude"])
-            phases.append(c["phase"])
-    return names, np.array(amps), np.array(phases)
+        name = _normalize_name(c["name"].lower())
+        amp = c["amplitude"]
+        if amp <= 0:
+            continue
+        if not _is_recognized(name):
+            skipped.append((c["name"], amp))
+            continue
+        phase_rad = np.radians(c["phase"])
+        z = amp * np.exp(-1j * phase_rad)
+        data_vars[name] = xr.Variable((), np.complex64(z))
 
+    if skipped:
+        names = ", ".join(f"{n} ({a:.4f}m)" for n, a in skipped)
+        print(
+            f"Warning: skipped {len(skipped)} unrecognized constituent(s): {names}",
+            file=sys.stderr,
+        )
 
-def predict_tide_height(
-    dt: datetime.datetime,
-    constituents: list[dict],
-    datum_offset: float = 0.0,
-) -> float:
-    """Predict tide height at a single datetime from harmonic constituents.
-
-    Uses pyTMD's astronomical argument computation for nodal corrections.
-
-    Args:
-        dt: UTC datetime
-        constituents: List of {"name": str, "amplitude": float, "phase": float}
-        datum_offset: Constant to add (e.g., MLLW offset from MSL)
-
-    Returns:
-        Predicted height in meters
-    """
-    if not constituents:
-        return datum_offset
-
-    if dt.tzinfo is None:
-        raise ValueError("predict_tide_height requires a timezone-aware datetime")
-
-    names, amplitudes, phases_deg = _filter_constituents(constituents)
-    if len(names) == 0:
-        return datum_offset
-
-    # Convert to MJD
-    epoch = datetime.datetime(1992, 1, 1, tzinfo=datetime.timezone.utc)
-    days_since_epoch = (dt - epoch).total_seconds() / 86400.0
-    mjd = np.array([days_since_epoch + _MJD_TIDE])
-
-    # Get astronomical arguments with nodal corrections
-    pu, pf, greenwich_phase = pyTMD.constituents.arguments(mjd, names, corrections="GOT")
-
-    # theta = radians(G) + pu (GOT-style phase computation)
-    theta = np.radians(greenwich_phase[0, :]) + pu[0, :]
-
-    # h(t) = sum( pf * A * cos(theta - phase_rad) )
-    phases_rad = np.radians(phases_deg)
-    height = float(np.sum(pf[0, :] * amplitudes * np.cos(theta - phases_rad)))
-
-    return height + datum_offset
+    return xr.Dataset(data_vars)
 
 
 def predict_tides_for_day(
@@ -151,10 +88,20 @@ def predict_tides_for_day(
     constituents: list[dict],
     datum_offset: float = 0.0,
 ) -> list[TideEvent]:
-    """Predict high/low tides for a single day.
+    """Predict high/low tides for a single day using pyTMD.
 
-    Computes tide heights at fine intervals and finds extrema.
+    Constructs an xarray Dataset from station harmonic constituents and
+    feeds it through pyTMD's predict.time_series() + predict.infer_minor().
     """
+    import pyTMD.predict
+
+    if not constituents:
+        return []
+
+    ds = _build_dataset(constituents)
+    if len(ds.data_vars) == 0:
+        return []
+
     start = datetime.datetime(date.year, date.month, date.day, tzinfo=datetime.timezone.utc)
     end = start + datetime.timedelta(days=1)
 
@@ -164,6 +111,14 @@ def predict_tides_for_day(
         times.append(current)
         current += datetime.timedelta(minutes=ELEVATION_INTERVAL_MINUTES)
 
-    elevations = np.array([predict_tide_height(t, constituents, datum_offset) for t in times])
+    # Days since 1992-01-01 (pyTMD's epoch)
+    t = np.array([(dt - _PYTMD_EPOCH).total_seconds() / 86400.0 for dt in times])
+
+    tide = pyTMD.predict.time_series(t, ds, corrections=STATION_CORRECTIONS)
+    minor = pyTMD.predict.infer_minor(t, ds, corrections=STATION_CORRECTIONS)
+
+    tide_arr = np.atleast_1d(np.asarray(tide)).astype(float)
+    minor_arr = np.atleast_1d(np.asarray(minor)).astype(float)
+    elevations = tide_arr.flatten() + minor_arr.flatten() + datum_offset
 
     return find_extrema(times, elevations)
