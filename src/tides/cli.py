@@ -13,7 +13,12 @@ from tides.ocean_model import SUPPORTED_MODELS
 
 # Matches a bare lat,lon token whose latitude has a leading '-'.
 # Click would otherwise treat the leading '-' as the start of an option flag.
-_NEG_COORD_RE = re.compile(r"^-\d+(?:\.\d+)?,-?\d+(?:\.\d+)?$")
+# The float halves accept the same forms parse_coordinate does:
+# optional sign, optional integer part (e.g. "-.5"), optional fractional part,
+# and optional whitespace around the comma (relevant when the user quoted the
+# token to keep it as a single argv entry).
+_FLOAT = r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)"
+_NEG_COORD_RE = re.compile(rf"^-(?:\d+(?:\.\d*)?|\.\d+)\s*,\s*{_FLOAT}$")
 
 
 def _escape_negative_coords(argv: list[str]) -> list[str]:
@@ -499,7 +504,9 @@ def main(
 
       tides get 35.9,-75.6 --local --feet
 
-      tides get -2.88,-39.91 --feet         # negative latitude works as-is
+    Negative-latitude coordinates may be passed directly, for example:
+
+      tides get -2.88,-39.91 --feet
 
     https://github.com/natecostello/tide-predictor
     """

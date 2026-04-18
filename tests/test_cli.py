@@ -95,6 +95,20 @@ class TestEscapeNegativeCoords:
         # so legitimate negative-number option values still parse correctly.
         assert _escape_negative_coords(["-2.88"]) == ["-2.88"]
 
+    def test_leading_decimal_lat(self):
+        assert _escape_negative_coords(["-.5,-39.91"]) == [" -.5,-39.91"]
+
+    def test_explicit_positive_lon_sign(self):
+        assert _escape_negative_coords(["-2.88,+39.91"]) == [" -2.88,+39.91"]
+
+    def test_whitespace_around_comma(self):
+        # Quoted form like "-2.88, -39.91" arrives as a single argv token
+        # with internal whitespace; the regex still matches it.
+        assert _escape_negative_coords(["-2.88, -39.91"]) == [" -2.88, -39.91"]
+
+    def test_trailing_dot_lat(self):
+        assert _escape_negative_coords(["-2.,-39"]) == [" -2.,-39"]
+
 
 class TestParseDateArg:
     def test_single_date(self):
