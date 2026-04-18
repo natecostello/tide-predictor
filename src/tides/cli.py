@@ -1,5 +1,6 @@
 import datetime
 import json
+import re
 import sys
 from typing import Optional
 
@@ -9,6 +10,22 @@ import typer
 from tides import __version__
 from tides.models import Coordinate, Source, TideResult
 from tides.ocean_model import SUPPORTED_MODELS
+
+# Matches a bare lat,lon token whose latitude has a leading '-'.
+# Click would otherwise treat the leading '-' as the start of an option flag.
+_NEG_COORD_RE = re.compile(r"^-\d+(?:\.\d+)?,-?\d+(?:\.\d+)?$")
+
+
+def _escape_negative_coords(argv: list[str]) -> list[str]:
+    """Prepend a space to bare negative-latitude coordinate tokens.
+
+    Click parses any argv token starting with '-' as an option, so a southern
+    coordinate like '-2.88,-39.91' would be rejected as an unknown flag. Adding
+    a leading space makes Click treat it as positional; ``parse_coordinate``
+    already strips whitespace.
+    """
+    return [(" " + a) if _NEG_COORD_RE.match(a) else a for a in argv]
+
 
 app = typer.Typer(
     name="tides",
@@ -256,7 +273,13 @@ def format_json(
 
 @app.command()
 def get(
-    coordinate: str = typer.Argument(..., help="Latitude,longitude (e.g. 40.7128,-74.0060)"),
+    coordinate: str = typer.Argument(
+        ...,
+        help=(
+            "Latitude,longitude (e.g. 40.7128,-74.0060). "
+            "Negative latitudes are accepted directly (e.g. -2.88,-39.91)."
+        ),
+    ),
     date: Optional[str] = typer.Option(
         None, "--date", "-d", help="Date or range: YYYY-MM-DD or YYYY-MM-DD:YYYY-MM-DD"
     ),
@@ -476,5 +499,18 @@ def main(
 
       tides get 35.9,-75.6 --local --feet
 
+      tides get -2.88,-39.91 --feet         # negative latitude works as-is
+
     https://github.com/natecostello/tide-predictor
     """
+
+
+def main_entry() -> None:
+    """Console-script entry point.
+
+    Rewrites ``sys.argv`` so a bare negative-latitude coordinate token
+    (e.g. ``-2.88,-39.91``) is not parsed as an option flag, then invokes
+    the Typer app.
+    """
+    sys.argv = [sys.argv[0], *_escape_negative_coords(sys.argv[1:])]
+    app()
