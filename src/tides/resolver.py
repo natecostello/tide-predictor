@@ -156,16 +156,16 @@ def _apply_datum(
         datum_offsets = None
         current_datum = "msl"
 
+    if datum == current_datum:
+        result.datum = datum
+        return result
+
     if datum_offsets is None:
         datum_offsets = get_model_datums(
             result.coordinate.lat,
             result.coordinate.lon,
             model_name,
         )
-
-    if datum == current_datum:
-        result.datum = datum
-        return result
 
     # Convert: height_target = height_current - (target_offset - current_offset)
     current_offset = datum_offsets.get(current_datum, 0.0)
