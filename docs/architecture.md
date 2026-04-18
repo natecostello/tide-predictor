@@ -29,6 +29,8 @@ User: tides get 40.7,-74.0 --feet --local
 
 Typer app with three subcommands: `get`, `cache`, `fetch-model`. Handles argument parsing, source/model/datum validation, error wrapping (no raw tracebacks), and output formatting. Two formatters: `format_plain` (default, `height@time` format) and `format_json` (structured with coordinate, source, datum, timezone metadata).
 
+The `tides` console script is wired to `main_entry`, a thin wrapper around the Typer app that rewrites `sys.argv` before dispatch: bare `lat,lon` tokens with a leading `-` (e.g. `-2.88,-39.91`) get a leading space prepended so Click does not parse them as option flags. `parse_coordinate` already strips whitespace, so this is transparent downstream. Bare negative numbers without a comma are left alone so legitimate negative-number option values still parse correctly.
+
 ### resolver.py — Source selection and datum conversion
 
 The core routing logic. `resolve_tides()` tries sources in order for `auto` mode:

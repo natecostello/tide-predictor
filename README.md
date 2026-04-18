@@ -28,6 +28,9 @@ tides get 40.7128,-74.0060 --date 2026-04-15
 # Date range with local times and feet
 tides get 35.9,-75.6 --date 2026-04-15:2026-04-17 --local --feet
 
+# Negative latitude (southern hemisphere) — pass as-is, no quoting needed
+tides get -2.88,-39.91 --feet
+
 # JSON output
 tides get 40.7128,-74.0060 --json
 
@@ -52,6 +55,13 @@ tides cache
 # Clear specific model cache
 tides cache clear eot20 --yes
 ```
+
+### Coordinate format
+
+Coordinates are `lat,lon` (e.g. `40.7128,-74.0060`). Negative latitudes
+are accepted directly — `tides get -2.88,-39.91` works without quoting or
+a `--` separator. Internally the CLI prefixes a leading space onto bare
+negative-coordinate tokens so Click does not parse them as option flags.
 
 ## Options
 

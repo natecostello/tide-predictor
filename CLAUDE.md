@@ -22,6 +22,10 @@ tides --version
 ```
 
 Coordinate accepts comma-separated form: `lat,lon` (e.g. `40.7128,-74.0060`).
+Negative latitudes work directly (e.g. `tides get -2.88,-39.91`): the
+`main_entry` console script prepends a space to any bare `-lat,lon` token
+in `sys.argv` before invoking Typer, so Click does not parse it as an
+option flag. `parse_coordinate` already strips whitespace.
 
 ## CLI Design Guidelines (from clig.dev)
 

@@ -7,6 +7,7 @@ import pytest
 from typer.testing import CliRunner
 
 from tides.cli import (
+    _escape_negative_coords,
     app,
     format_json,
     format_plain,
@@ -50,6 +51,63 @@ class TestParseCoordinate:
     def test_latitude_out_of_range(self):
         with pytest.raises(SystemExit):
             parse_coordinate(["95.0,-74.0060"])
+
+    def test_leading_space_negative_lat(self):
+        # main_entry prepends a space; parse_coordinate must accept that form.
+        c = parse_coordinate([" -2.88,-39.91"])
+        assert c.lat == pytest.approx(-2.88)
+        assert c.lon == pytest.approx(-39.91)
+
+
+class TestEscapeNegativeCoords:
+    def test_negative_coord_gets_space(self):
+        assert _escape_negative_coords(["get", "-2.88,-39.91"]) == ["get", " -2.88,-39.91"]
+
+    def test_positive_coord_unchanged(self):
+        assert _escape_negative_coords(["get", "40.71,-74.00"]) == ["get", "40.71,-74.00"]
+
+    def test_option_flag_unchanged(self):
+        assert _escape_negative_coords(["get", "--date", "2026-04-15"]) == [
+            "get",
+            "--date",
+            "2026-04-15",
+        ]
+
+    def test_short_flag_unchanged(self):
+        assert _escape_negative_coords(["get", "-d", "2026-04-15"]) == ["get", "-d", "2026-04-15"]
+
+    def test_negative_coord_among_options(self):
+        argv = ["get", "-2.88,-39.91", "--date", "2025-12-03", "--feet", "--local"]
+        assert _escape_negative_coords(argv) == [
+            "get",
+            " -2.88,-39.91",
+            "--date",
+            "2025-12-03",
+            "--feet",
+            "--local",
+        ]
+
+    def test_negative_integer_lat(self):
+        assert _escape_negative_coords(["-2,-39"]) == [" -2,-39"]
+
+    def test_non_coord_negative_number_unchanged(self):
+        # A bare negative number (no comma) is not a coordinate; leave alone
+        # so legitimate negative-number option values still parse correctly.
+        assert _escape_negative_coords(["-2.88"]) == ["-2.88"]
+
+    def test_leading_decimal_lat(self):
+        assert _escape_negative_coords(["-.5,-39.91"]) == [" -.5,-39.91"]
+
+    def test_explicit_positive_lon_sign(self):
+        assert _escape_negative_coords(["-2.88,+39.91"]) == [" -2.88,+39.91"]
+
+    def test_whitespace_around_comma(self):
+        # Quoted form like "-2.88, -39.91" arrives as a single argv token
+        # with internal whitespace; the regex still matches it.
+        assert _escape_negative_coords(["-2.88, -39.91"]) == [" -2.88, -39.91"]
+
+    def test_trailing_dot_lat(self):
+        assert _escape_negative_coords(["-2.,-39"]) == [" -2.,-39"]
 
 
 class TestParseDateArg:
