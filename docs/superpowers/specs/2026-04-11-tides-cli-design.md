@@ -48,6 +48,8 @@ Controlled by `--source` flag:
 
 > **Amended 2026-09-27 (#12):** `auto` now tries NOAA, then the global station database, then the model. A NOAA station that cannot serve the requested `--datum` (subordinate stations publish MLLW only), or a NOAA API/network failure while fetching predictions or station datums, falls through to the next source with a stderr note instead of failing. `--source noaa` still reports the error (exit 2).
 
+> **Amended 2026-09-27 (#16):** the fall-through also covers the NOAA station-list fetch (a stale cached list is reused with a warning when a refresh fails) and the GitHub station-database download (auto falls through to the model). Explicit `--source` values report these errors (exit 2), naming the service that actually failed.
+
 ### NOAA CO-OPS API
 
 - Free, no authentication required

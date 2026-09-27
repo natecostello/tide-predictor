@@ -39,7 +39,7 @@ The core routing logic. `resolve_tides()` tries sources in order for `auto` mode
 3. **Gridded model** — always available (fallback)
 
 After getting a result, `_apply_datum()` converts heights from the source's native datum to the requested datum. This is the trickiest part of the codebase because each source uses a different native datum:
-- **NOAA**: requested directly in the target datum (MLLW, MLW, MSL, MTL, MHW, MHHW). LAT/HAT are derived from MLLW predictions plus the station's published `datums.json`. NOAA heights are never shifted by model-derived datums. Subordinate ("S") stations publish MLLW only; in auto mode a station that cannot serve the datum, or a NOAA API/network failure while fetching predictions or station datums, falls through to the next source with a stderr note
+- **NOAA**: requested directly in the target datum (MLLW, MLW, MSL, MTL, MHW, MHHW). LAT/HAT are derived from MLLW predictions plus the station's published `datums.json`. NOAA heights are never shifted by model-derived datums. Subordinate ("S") stations publish MLLW only; in auto mode a station that cannot serve the datum, or a NOAA API/network failure (station list, predictions or station datums), falls through to the next source with a stderr note; likewise an unreachable GitHub station database falls through to the model
 - **Station**: heights relative to chart datum (LAT or MLLW, varies per station)
 - **Model**: heights relative to MSL (mean sea level)
 
