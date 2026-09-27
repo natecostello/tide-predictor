@@ -51,6 +51,8 @@ z = amplitude * exp(-1j * phase_radians)
 
 **Minor constituents**: Add `predict.infer_minor()` call, matching what `ocean_model.py` does. This infers ~20 minor constituents from the major ones.
 
+> **Amended 2026-09-27 (#15):** superseded for station data. Station predictions now use `corrections="GOT"` (Doodson-number arguments and frequencies for every recognized constituent; pyTMD's `OTIS` branch uses a fixed ~33-constituent table and freezes any other constituent, e.g. 25 at Fortaleza) and do **not** call `infer_minor()` (station analyses are complete by design). Golden Gate vs NOAA 6-min MSL: ~3.7 cm RMS (OTIS + infer_minor) -> ~1.8 cm. `3L2` is no longer mapped to pyTMD's `l2'` (not confirmed to be the same constituent). Gridded models (`ocean_model.py`) still infer minor constituents.
+
 ### Files Changed
 - `src/tides/harmonics.py` — rewrite: construct xarray Dataset, call `predict.time_series()` + `predict.infer_minor()`
 - `src/tides/stations.py` — update to pass corrections type

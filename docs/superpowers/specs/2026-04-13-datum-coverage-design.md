@@ -23,7 +23,7 @@ Computes tidal datums (LAT, MLLW, MLW, MSL, MHW, MHHW, HAT) from either station 
 
 **Caching**: store computed model datums at `~/.cache/tides/datums/{model}.v3.json` (versioned; originally `{model}.json`), keyed by the query point rounded to 0.01° (originally the model grid resolution, which let one query answer for a whole cell). Only all-finite datum sets are cached. Entries never expire.
 
-> **Amended 2026-09-27 (#14):** a point with no model data (e.g. inland) raises `DatumUnavailableError` (CLI exit 2) instead of yielding NaN/0.0 datums. On the station path, datums the station does not publish are computed from its own harmonics (cached per station id in `datums/stations.v1.json`); published values always win, and the station path never uses model datums.
+> **Amended 2026-09-27 (#14):** a point with no model data (e.g. inland) raises `DatumUnavailableError` (CLI exit 2) instead of yielding NaN/0.0 datums. On the station path, datums the station does not publish are computed from its own harmonics (cached per station id in `datums/stations.v2.json` -- v2 since #15 switched station predictions to GOT corrections); published values always win, and the station path never uses model datums.
 
 > **Amended 2026-09-27 (#13):** the model path now predicts at 6-minute intervals over 2003-01-01 to 2022-01-01 (end exclusive, yearly chunks), takes MHHW/MLLW per tidal day (24.8412 h) rather than per calendar day, and is vectorized (~10 ms extraction). MSL stays 0 by definition (the harmonic series has no Z0). The cache file is versioned (`{model}.v2.json`).
 
