@@ -106,7 +106,10 @@ def predict_station_tides(
 ) -> list[TideEvent]:
     """Predict tides at a station using its harmonic constituents.
 
-    Heights are relative to the station's chart_datum.
+    Heights are relative to the station's chart_datum when that datum is a
+    supported one published relative to MSL; otherwise (e.g. a STND chart
+    datum with no published datums) they are MSL-relative. See
+    datums.station_heights_datum.
 
     Args:
         station: Full station data with harmonic_constituents and datums
@@ -114,7 +117,7 @@ def predict_station_tides(
         end_date: End date (inclusive)
 
     Returns:
-        List of TideEvent with heights relative to chart datum
+        List of TideEvent with heights in datums.station_heights_datum(station)
     """
     constituents = station.get("harmonic_constituents", [])
     if not constituents:

@@ -219,7 +219,9 @@ def _apply_datum(
 ) -> TideResult:
     """Convert tide heights to the requested datum.
 
-    Station predictions arrive relative to chart_datum (LAT or MLLW).
+    Station predictions arrive relative to the station's chart datum (usually
+    LAT or MLLW), or MSL when that datum is not published relative to MSL
+    (datums.station_heights_datum).
     Model predictions arrive relative to MSL.
     NOAA predictions are requested in the target datum already (see
     _fetch_noaa_events) and are never shifted by model-derived datums.
