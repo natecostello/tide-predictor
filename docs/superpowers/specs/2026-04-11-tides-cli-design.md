@@ -20,13 +20,16 @@ The coordinate is the primary positional argument. The parser accepts these form
 |-------|---------------|
 | `40.7128,-74.0060` | Single comma-separated arg, no space |
 | `40.7128, -74.0060` | Quoted with space (shell splits otherwise) |
-| `40.7128 -74.0060` | Two positional args that both parse as floats |
+| `"40.7128 -74.0060"` | One quoted token with whitespace (amended #18; two separate unquoted args are not supported -- the CLI takes a single coordinate argument) |
 
-Order is always `latitude, longitude`. If two positional args are provided and both parse as valid latitude (-90 to 90) and longitude (-180 to 180), treat them as a coordinate pair.
+Order is always `latitude, longitude`. (Amended 2026-09-27, #18: the coordinate is a single argument, `lat,lon` or quoted `"lat lon"`; a bare negative latitude such as `-2.88,-39.91` or `"-2.88 -39.91"` is accepted directly.)
 
 Note: negative longitudes (e.g. `-74.0060`) may be interpreted as flags by the shell or Typer. The CLI should use Typer's `click.Context` settings to allow interspersed args, and document that `--` can be used to disambiguate if needed (e.g. `tides -- 40.7128 -74.0060`). The comma-separated form avoids this issue entirely.
 
 ### Date
+
+- (Amended 2026-09-27, #18) Ranges are limited to 366 days inclusive; NOAA's own hilo limit is 3,655 days.
+- (Amended 2026-09-27, #18) `-h`/`--help` work on every command and bare `tides` shows help.
 
 - Default: today (UTC date at time of invocation; with `--local`, today's date in the coordinate's timezone -- amended 2026-09-27, #10)
 - Single date: `--date 2026-04-15` (ISO 8601)
@@ -80,9 +83,11 @@ Controlled by `--source` flag:
 | `--local` | `-l` | `bool` | `False` | Display times in local timezone at the coordinates |
 | `--feet` | `-f` | `bool` | `False` | Display heights in feet instead of meters |
 | `--json` | `-j` | `bool` | `False` | Output as structured JSON |
-| `--between` | `-b` | `str` | `None` | Time window filter `HH:MM:HH:MM` (24h, applied per-day) |
+| `--between` | `-b` | `str` | `None` | Time window filter `HH:MM:HH:MM` (24h, applied per-day; a start after the end wraps midnight, e.g. `20:00:04:00` -- #18) |
 | `--precision` | `-p` | `int` | `1` | Decimal places for height values |
-| `--source` | `-s` | `str` | `auto` | Data source: `auto`, `noaa`, `model` |
+| `--source` | `-s` | `str` | `auto` | Data source: `auto`, `noaa`, `station`, `model` |
+| `--model` | `-m` | `str` | `got5.6` | Tide model: `got5.6`, `got5.5`, `eot20`, `fes2022`; a stderr note says when it was ignored because a NOAA/station source answered (#18) |
+| `--datum` | | `str` | `mllw` | Height datum: `lat`, `mllw`, `mlw`, `msl`, `mtl`, `mhw`, `mhhw`, `hat` |
 | `--verbose` | `-v` | `bool` | `False` | Show source details (station name, distance) |
 
 ## Output
@@ -156,7 +161,7 @@ The `timezone` field reflects the actual timezone used: `"UTC"` by default, or t
 
 ### Time Filtering (`--between`)
 
-`--between 06:00:18:00` filters output to only tides whose time falls within the window. Applied per-day for multi-day ranges. When `--local` is active, the filter applies to local times.
+`--between 06:00:18:00` filters output to only tides whose time falls within the window. Applied per-day for multi-day ranges. When `--local` is active, the filter applies to local times. (Amended 2026-09-27, #18: when the start is after the end, the window wraps midnight, e.g. `20:00:04:00` keeps 20:00-23:59 and 00:00-04:00.)
 
 ## Subcommands
 
