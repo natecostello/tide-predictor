@@ -83,9 +83,9 @@ negative-coordinate tokens so Click does not parse them as option flags.
 
 **NOAA CO-OPS** (US waters): Uses official tide station predictions. Auto-selected when a station is within 25km of the coordinates. Heights are NOAA's own published values in the requested datum. NOAA subordinate stations publish MLLW only; for other datums, `auto` mode falls through to the station database or model (with a note on stderr), and `--source noaa` reports an error.
 
-**GOT5.6** (global, default): NASA Goddard Ocean Tide model at 0.5° resolution. Used as fallback for locations outside NOAA coverage. Model data is auto-downloaded on first use.
+**GOT5.6** (global, default): NASA Goddard Ocean Tide model at 1/8° resolution. Used as fallback for locations outside NOAA coverage. Model data is auto-downloaded on first use.
 
-**EOT20** (global, `--model eot20`): Empirical Ocean Tide model at 0.125° resolution (4x finer than GOT5.6). Better accuracy for coastal locations. Auto-downloaded on first use (~2.3GB).
+**EOT20** (global, `--model eot20`): Empirical Ocean Tide model at 1/8° resolution. Auto-downloaded on first use (~2.3GB).
 
 **FES2022** (global, `--model fes2022`): FES2022b ocean tide model with 34 tidal constituents. Highest fidelity available. Must be manually downloaded from [AVISO](https://www.aviso.altimetry.fr/en/data/products/auxiliary-products/global-tide-fes.html) (~5GB on disk).
 

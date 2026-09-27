@@ -20,7 +20,18 @@ _DATUM_EPOCH_END = datetime.date(2022, 1, 1)
 
 # On-disk cache version. Bump when computed values change so stale entries are
 # never reused (old files are left in place, unused).
-DATUM_CACHE_VERSION = 2
+DATUM_CACHE_VERSION = 3
+
+# Version of the per-station computed-datum cache (datums/stations.vN.json).
+STATION_DATUM_CACHE_VERSION = 1
+
+# Datum cache keys are the query point rounded to this many degrees (~1 km),
+# independent of model grid resolution.
+_CACHE_KEY_DECIMALS = 2
+
+
+class DatumUnavailableError(Exception):
+    """Tidal datums cannot be determined for this location or station."""
 
 
 class Datum(Enum):
@@ -44,7 +55,14 @@ def datums_from_station(station: dict) -> dict[str, float] | None:
     if not datums:
         return None
 
-    msl = datums.get("MSL", datums.get("MTL", 0.0))
+    # Offsets must be relative to MSL (or MTL as a close proxy). Without either,
+    # the published values cannot be referenced to MSL at all.
+    if "MSL" in datums:
+        msl = datums["MSL"]
+    elif "MTL" in datums:
+        msl = datums["MTL"]
+    else:
+        return None
 
     result = {}
     for key in ("LAT", "MLLW", "MLW", "MSL", "MTL", "MHW", "MHHW", "HAT"):
@@ -84,6 +102,11 @@ def compute_datums_from_model(
 
     chunks = np.array_split(t, max(1, n_days // 365))
     elevations = np.concatenate([predict_elevations(c, local, m) for c in chunks])
+    if not np.all(np.isfinite(elevations)):
+        raise DatumUnavailableError(
+            f"no {model_name} tidal data within 10 km of {lat:.4f},{lon:.4f} (inland?); "
+            "cannot compute tidal datums here"
+        )
 
     return _extract_datums(elevations, DATUM_INTERVAL_MINUTES)
 
@@ -133,8 +156,11 @@ def _extract_datums(elevations: np.ndarray, interval_minutes: float = 6.0) -> di
     higher_highs = _per_bin_extreme(highs[keep_h], high_bins[keep_h], np.maximum)
     lower_lows = _per_bin_extreme(lows[keep_l], low_bins[keep_l], np.minimum)
 
-    mhw = float(np.mean(highs)) if len(highs) > 0 else 0.0
-    mlw = float(np.mean(lows)) if len(lows) > 0 else 0.0
+    if len(highs) == 0 or len(lows) == 0 or not np.all(np.isfinite(elevations)):
+        raise DatumUnavailableError("no tidal highs/lows in the series; cannot compute datums")
+
+    mhw = float(np.mean(highs))
+    mlw = float(np.mean(lows))
     mhhw = float(np.mean(higher_highs)) if len(higher_highs) > 0 else mhw
     mllw = float(np.mean(lower_lows)) if len(lower_lows) > 0 else mlw
 
@@ -160,14 +186,41 @@ def _get_datum_cache_dir() -> Path:
     return d
 
 
-def _grid_key(lat: float, lon: float, model_name: str) -> str:
-    """Round coordinate to model grid resolution for cache key."""
-    # FES2022: 1/16 deg (~0.0625 deg), GOT: 0.5 deg, EOT20: 0.125 deg
-    resolutions = {"FES2022": 0.0625, "GOT5.6": 0.5, "GOT5.5": 0.5, "EOT20": 0.125}
-    res = resolutions.get(model_name, 0.125)
-    rlat = round(round(lat / res) * res, 4)
-    rlon = round(round(lon / res) * res, 4)
-    return f"{rlat},{rlon}"
+def _cache_key(lat: float, lon: float) -> str:
+    """Datum cache key: the query point rounded to 0.01 deg (~1 km).
+
+    Datums are computed at the exact query point, so the key must not merge
+    distinct points (the old grid-resolution key let the first query in a cell,
+    possibly on land, answer for every point in it).
+    """
+    return f"{round(lat, _CACHE_KEY_DECIMALS):.2f},{round(lon, _CACHE_KEY_DECIMALS):.2f}"
+
+
+def _all_finite(datums: object) -> bool:
+    return (
+        isinstance(datums, dict)
+        and bool(datums)
+        and all(isinstance(v, (int, float)) and np.isfinite(v) for v in datums.values())
+    )
+
+
+def _read_cache(cache_file: Path) -> dict:
+    if not cache_file.exists():
+        return {}
+    try:
+        data = json.loads(cache_file.read_text())
+    except (json.JSONDecodeError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _write_cache_entry(cache_file: Path, key: str, datums: dict[str, float]) -> None:
+    """Merge one entry into a cache file. Non-finite values are never cached."""
+    if not _all_finite(datums):
+        return
+    cache = _read_cache(cache_file)
+    cache[key] = datums
+    cache_file.write_text(json.dumps(cache, indent=2))
 
 
 def get_model_datums(
@@ -175,32 +228,72 @@ def get_model_datums(
     lon: float,
     model_name: str = "GOT5.6",
 ) -> dict[str, float]:
-    """Get tidal datums for a coordinate, using cache when available."""
-    cache_dir = _get_datum_cache_dir()
-    cache_file = cache_dir / f"{model_name.lower()}.v{DATUM_CACHE_VERSION}.json"
+    """Get tidal datums for a coordinate, using cache when available.
 
-    key = _grid_key(lat, lon, model_name)
+    Raises DatumUnavailableError when the model has no data at the point.
+    """
+    cache_file = _get_datum_cache_dir() / f"{model_name.lower()}.v{DATUM_CACHE_VERSION}.json"
+    key = _cache_key(lat, lon)
 
-    # Check cache
-    if cache_file.exists():
-        try:
-            cache = json.loads(cache_file.read_text())
-            if key in cache:
-                return cache[key]
-        except (json.JSONDecodeError, ValueError):
-            pass
+    cached = _read_cache(cache_file).get(key)
+    if _all_finite(cached):
+        return cached
 
-    # Compute
     datums = compute_datums_from_model(lat, lon, model_name)
-
-    # Save to cache
-    cache = {}
-    if cache_file.exists():
-        try:
-            cache = json.loads(cache_file.read_text())
-        except (json.JSONDecodeError, ValueError):
-            pass
-    cache[key] = datums
-    cache_file.write_text(json.dumps(cache, indent=2))
-
+    _write_cache_entry(cache_file, key, datums)
     return datums
+
+
+def compute_station_datums(station: dict) -> dict[str, float]:
+    """Compute a station's full datum set from its own harmonic constituents.
+
+    Runs the same 19-year, 6-minute prediction used for model datums. Values
+    are MSL-relative (the harmonic series has no Z0 term). Raises
+    DatumUnavailableError when the station has no usable harmonics.
+    """
+    from tides.harmonics import predict_elevations
+
+    constituents = station.get("harmonic_constituents") or []
+    if not constituents:
+        raise DatumUnavailableError(
+            f"station {station.get('name', '?')} publishes neither the requested datum "
+            "nor harmonic constituents to compute it"
+        )
+
+    epoch = datetime.date(1992, 1, 1)
+    start_days = (_DATUM_EPOCH_START - epoch).days
+    n_days = (_DATUM_EPOCH_END - _DATUM_EPOCH_START).days
+    t = start_days + np.arange(0, n_days * 1440, DATUM_INTERVAL_MINUTES) / 1440.0
+    elevations = predict_elevations(constituents, t, chunks=max(1, n_days // 365))
+    return _extract_datums(elevations, DATUM_INTERVAL_MINUTES)
+
+
+def station_heights_datum(station: dict) -> str:
+    """The datum (lowercase) that station predictions are expressed in.
+
+    predict_station_tides shifts harmonic heights to the station's chart datum
+    only when that datum is a supported one the station publishes relative to
+    MSL; otherwise heights stay MSL-relative. Both sides must agree.
+    """
+    chart = str(station.get("chart_datum", "MSL")).lower()
+    published = datums_from_station(station) or {}
+    return chart if chart in published else "msl"
+
+
+def get_station_datums(station: dict, station_id: str, needed: set[str]) -> dict[str, float]:
+    """Datum offsets (MSL-relative) for a station, covering every datum in `needed`.
+
+    Published datums always win; only datums the station does not publish are
+    computed from its harmonics (cached per station id).
+    """
+    published = datums_from_station(station) or {}
+    if needed <= published.keys():
+        return published
+
+    cache_file = _get_datum_cache_dir() / f"stations.v{STATION_DATUM_CACHE_VERSION}.json"
+    computed = _read_cache(cache_file).get(station_id)
+    if not _all_finite(computed):
+        computed = compute_station_datums(station)
+        _write_cache_entry(cache_file, station_id, computed)
+
+    return {**computed, **published}

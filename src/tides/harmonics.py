@@ -80,6 +80,28 @@ def _build_dataset(constituents: list[dict]) -> xr.Dataset:
     return xr.Dataset(data_vars)
 
 
+def predict_elevations(constituents: list[dict], t: np.ndarray, chunks: int = 1) -> np.ndarray:
+    """Predict MSL-relative elevations from station constituents at times `t`.
+
+    `t` is days since the pyTMD epoch (1992-01-01). Long series can be split
+    into `chunks` to bound memory. Builds the constituent dataset once.
+    """
+    import pyTMD.predict
+
+    ds = _build_dataset(constituents)
+    if len(ds.data_vars) == 0:
+        return np.full(len(t), np.nan)
+
+    parts = []
+    for c in np.array_split(np.asarray(t, dtype=float), max(1, chunks)):
+        tide = pyTMD.predict.time_series(c, ds, corrections=STATION_CORRECTIONS)
+        minor = pyTMD.predict.infer_minor(c, ds, corrections=STATION_CORRECTIONS)
+        tide_arr = np.asarray(getattr(tide, "values", tide), dtype=float).ravel()
+        minor_arr = np.asarray(getattr(minor, "values", minor), dtype=float).ravel()
+        parts.append(tide_arr + minor_arr)
+    return np.concatenate(parts)
+
+
 def predict_tides_for_day(
     date: datetime.date,
     constituents: list[dict],

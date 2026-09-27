@@ -98,7 +98,9 @@ Tidal datums (LAT, MLLW, MLW, MSL, MTL, MHW, MHHW, HAT) are statistical properti
    - MHW/MLW: mean of all highs / all lows
    - MTL: (MHW + MLW) / 2
 
-Computed datums are cached at `~/.cache/tides/datums/{model}.v2.json` (the version is bumped whenever computed values change; older files are left unused), keyed by coordinate rounded to model grid resolution. Computation takes ~5 seconds per point on GOT5.6; cached lookups are instant.
+Computed datums are cached at `~/.cache/tides/datums/{model}.v3.json` (the version is bumped whenever computed values or keys change; older files are left unused), keyed by the query point rounded to 0.01 deg (~1 km) so distinct points never share an entry. Only all-finite datum sets are cached: a point with no model data (e.g. >10 km inland of the model's wet cells) raises `DatumUnavailableError` (CLI exit 2) instead of producing NaN or 0.0 datums. Computation takes ~5 seconds per point on GOT5.6; cached lookups are instant.
+
+3. **Station datums the station does not publish**: the station path never uses model datums. Published datums always win; any datum the station lacks (including its chart datum, e.g. STND with no published datums) is computed from the station's own harmonics with the same 19-year, 6-minute method and cached per station id in `datums/stations.v1.json`. A station with neither the datum nor harmonics is an error (exit 2), never a silent MSL substitution. When a station's chart datum is not published relative to MSL, its predictions stay MSL-relative (`datums.station_heights_datum`).
 
 ### cache.py — Cache management
 

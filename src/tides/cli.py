@@ -157,6 +157,18 @@ def parse_between(between_str: str | None) -> tuple[datetime.time, datetime.time
     return start, end
 
 
+def _finite_height(height: float) -> float:
+    """Refuse to render NaN/inf heights (they would print as 'nan' or produce
+    invalid JSON)."""
+    import math
+
+    from tides.datums import DatumUnavailableError
+
+    if not math.isfinite(height):
+        raise DatumUnavailableError("non-finite height in output")
+    return height
+
+
 def format_plain(
     result: TideResult,
     feet: bool,
@@ -194,7 +206,7 @@ def format_plain(
                 if not (between[0] <= t <= between[1]):
                     continue
 
-            height = event.height_ft if feet else event.height
+            height = _finite_height(event.height_ft if feet else event.height)
             height_str = f"{height:.{precision}f}{unit}"
             event_strs.append(f"{height_str}@{time_str}")
 
@@ -248,7 +260,7 @@ def format_json(
                 if not (between[0] <= t <= between[1]):
                     continue
 
-            height = event.height_ft if feet else event.height
+            height = _finite_height(event.height_ft if feet else event.height)
             tides_list.append(
                 {
                     "time": time_str,
@@ -342,6 +354,7 @@ def get(
         )
         raise SystemExit(1)
 
+    from tides.datums import DatumUnavailableError
     from tides.noaa import NOAAError
     from tides.resolver import resolve_tides
 
@@ -356,6 +369,9 @@ def get(
         )
     except SystemExit:
         raise
+    except DatumUnavailableError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        raise SystemExit(2)
     except NOAAError as e:
         print(f"Error: {e}", file=sys.stderr)
         raise SystemExit(2)
@@ -378,12 +394,16 @@ def get(
         )
         raise SystemExit(2)
 
-    if json_output:
-        print(format_json(result, feet, precision, local, between_times))
-    else:
-        output = format_plain(result, feet, precision, local, between_times, verbose)
-        if output:
-            print(output)
+    try:
+        if json_output:
+            output = format_json(result, feet, precision, local, between_times)
+        else:
+            output = format_plain(result, feet, precision, local, between_times, verbose)
+    except DatumUnavailableError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        raise SystemExit(2)
+    if output:
+        print(output)
 
 
 @app.command("fetch-model")

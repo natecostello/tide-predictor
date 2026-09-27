@@ -121,16 +121,15 @@ def predict_station_tides(
         return []
 
     # Apply chart datum offset so heights are relative to the station's
-    # published datum (usually LAT or MLLW)
-    datums = station.get("datums", {})
-    chart_datum = station.get("chart_datum", "MSL")
+    # published datum (usually LAT or MLLW). Our harmonic prediction oscillates
+    # around 0 ~= MSL, so height_CD = height_MSL - (CD - MSL). When the chart
+    # datum is not a supported datum published relative to MSL (e.g. STND with
+    # no datums), heights stay MSL-relative; see datums.station_heights_datum.
+    from tides.datums import datums_from_station, station_heights_datum
 
-    # Datums are all relative to STND (station datum = 0).
-    # Our harmonic prediction oscillates around 0 ~= MSL.
-    # To convert to chart datum: height_CD = height_MSL + (MSL - CD)
-    msl = datums.get("MSL", datums.get("MTL", 0.0))
-    cd = datums.get(chart_datum, msl)
-    datum_offset = msl - cd
+    heights_datum = station_heights_datum(station)
+    offsets = datums_from_station(station) or {}
+    datum_offset = -offsets.get(heights_datum, 0.0) if heights_datum != "msl" else 0.0
 
     all_events = []
     current = begin_date

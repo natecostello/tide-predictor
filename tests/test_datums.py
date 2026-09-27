@@ -10,8 +10,8 @@ import pytest
 
 from tides.datums import (
     Datum,
+    _cache_key,
     _extract_datums,
-    _grid_key,
     datums_from_station,
     get_model_datums,
 )
@@ -121,21 +121,17 @@ class TestExtractDatums:
         assert result["mhhw"] <= result["hat"]
 
 
-class TestGridKey:
-    def test_got56_resolution(self):
-        key = _grid_key(40.7, -74.0, "GOT5.6")
-        # 0.5 deg grid: 40.7 rounds to 40.5, -74.0 stays
-        assert key == "40.5,-74.0"
+class TestCacheKey:
+    def test_rounds_to_hundredth_degree(self):
+        assert _cache_key(40.7128, -74.0060) == "40.71,-74.01"
 
-    def test_fes2022_resolution(self):
-        key = _grid_key(40.7, -74.0, "FES2022")
-        # 1/16 deg = 0.0625: 40.7/0.0625 = 651.2, round to 651 * 0.0625 = 40.6875
-        assert "40.6875" in key
+    def test_nearby_points_get_distinct_keys(self):
+        # Golden Gate vs Alameda (~15 km apart) shared one key under the old
+        # 0.5 deg grid key.
+        assert _cache_key(37.8063, -122.4659) != _cache_key(37.7652, -122.2997)
 
-    def test_eot20_resolution(self):
-        key = _grid_key(40.7, -74.0, "EOT20")
-        # 0.125 deg grid: 40.7/0.125 = 325.6, round to 326 * 0.125 = 40.75
-        assert "40.75" in key
+    def test_model_independent(self):
+        assert _cache_key(1.234, 5.678) == "1.23,5.68"
 
 
 class TestComputeDatumsFromModel:
@@ -216,27 +212,27 @@ class TestGetModelDatums:
         with patch.dict(os.environ, {"XDG_CACHE_HOME": str(tmp_path)}):
             cache_dir = tmp_path / "tides" / "datums"
             cache_dir.mkdir(parents=True)
-            key = _grid_key(40.7, -74.0, "GOT5.6")
+            key = _cache_key(40.7, -74.0)
             cached = {key: {"mllw": -0.5, "mhw": 0.4, "msl": 0.0}}
-            (cache_dir / "got5.6.v2.json").write_text(json.dumps(cached))
+            (cache_dir / "got5.6.v3.json").write_text(json.dumps(cached))
 
             result = get_model_datums(40.7, -74.0, "GOT5.6")
             assert result["mllw"] == -0.5
 
-    def test_ignores_pre_v2_cache_file(self, tmp_path):
+    def test_ignores_older_cache_versions(self, tmp_path):
         with patch.dict(os.environ, {"XDG_CACHE_HOME": str(tmp_path)}):
             cache_dir = tmp_path / "tides" / "datums"
             cache_dir.mkdir(parents=True)
-            key = _grid_key(40.7, -74.0, "GOT5.6")
-            (cache_dir / "got5.6.json").write_text(json.dumps({key: {"mllw": -9.9}}))
+            key = _cache_key(40.7, -74.0)
+            (cache_dir / "got5.6.v2.json").write_text(json.dumps({key: {"mllw": -9.9}}))
             fresh = {"mllw": -0.6, "msl": 0.0}
             with patch("tides.datums.compute_datums_from_model", return_value=fresh) as comp:
                 result = get_model_datums(40.7, -74.0, "GOT5.6")
             comp.assert_called_once()
             assert result["mllw"] == -0.6
-            assert (cache_dir / "got5.6.v2.json").exists()
+            assert (cache_dir / "got5.6.v3.json").exists()
             # Old file left in place (never deleted by code).
-            assert json.loads((cache_dir / "got5.6.json").read_text())[key]["mllw"] == -9.9
+            assert json.loads((cache_dir / "got5.6.v2.json").read_text())[key]["mllw"] == -9.9
 
     def test_computes_when_not_cached(self, tmp_path):
         with patch.dict(os.environ, {"XDG_CACHE_HOME": str(tmp_path)}):
@@ -246,17 +242,17 @@ class TestGetModelDatums:
                 assert result["mllw"] == -0.6
 
             # Verify it was cached
-            cache_file = tmp_path / "tides" / "datums" / "got5.6.v2.json"
+            cache_file = tmp_path / "tides" / "datums" / "got5.6.v3.json"
             assert cache_file.exists()
             cache = json.loads(cache_file.read_text())
-            key = _grid_key(40.7, -74.0, "GOT5.6")
+            key = _cache_key(40.7, -74.0)
             assert key in cache
 
     def test_handles_corrupt_cache(self, tmp_path):
         with patch.dict(os.environ, {"XDG_CACHE_HOME": str(tmp_path)}):
             cache_dir = tmp_path / "tides" / "datums"
             cache_dir.mkdir(parents=True)
-            (cache_dir / "got5.6.v2.json").write_text("not json!!!")
+            (cache_dir / "got5.6.v3.json").write_text("not json!!!")
 
             mock_datums = {"mllw": -0.6, "msl": 0.0}
             with patch("tides.datums.compute_datums_from_model", return_value=mock_datums):
