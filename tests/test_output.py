@@ -102,13 +102,18 @@ class TestKinds:
                 {"t": "2026-04-15 08:42", "v": "0.0", "type": "L"},
                 {"t": "2026-04-15 14:36", "v": "1.3", "type": "H"},
                 {"t": "2026-04-15 20:54", "v": "-0.1", "type": "LL"},
+                {"t": "2026-04-16 03:00", "v": "0.2", "type": "HL"},
+                {"t": "2026-04-16 09:00", "v": "1.1", "type": "LH"},
             ]
         }
+        # HL = higher low (a low), LH = lower high (a high).
         assert [e.kind for e in parse_predictions_response(data)] == [
             "high",
             "low",
             "high",
             "low",
+            "low",
+            "high",
         ]
 
 
