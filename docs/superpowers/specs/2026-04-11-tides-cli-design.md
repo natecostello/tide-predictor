@@ -162,13 +162,13 @@ The `timezone` field reflects the actual timezone used: `"UTC"` by default, or t
 
 ### `tides fetch-model`
 
-Pre-downloads everything a query needs offline: the NOAA station list (always refreshed), the global tide station database and the GOT5.6 model (each downloaded only if missing or invalid). Amended 2026-09-27 (#16); originally GOT5.6 and NOAA metadata only.
+Pre-downloads everything a query needs offline: the NOAA station list (always refreshed), the global tide station database (a missing or invalid index is rebuilt from on-disk station files if possible, otherwise downloaded) and the GOT5.6 model (downloaded only if missing). Amended 2026-09-27 (#16); originally GOT5.6 and NOAA metadata only.
 
 ```
 tides fetch-model
 ```
 
-Displays download progress and one status line per item; the station database and GOT5.6 report "already present" when nothing was downloaded.
+Displays download progress and one status line per item: the station database reports "already present", "index rebuilt from N cached station files", or its download progress; GOT5.6 reports "already present" or its download.
 
 ## Data Management
 

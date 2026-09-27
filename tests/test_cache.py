@@ -350,7 +350,7 @@ class TestFetchAll:
         assert json.loads(index.read_text())[0]["id"] == "9"
         assert "Station database: already present" not in capsys.readouterr().err
 
-    def test_invalid_index_rebuilt_from_disk_without_download(self, tmp_path):
+    def test_invalid_index_rebuilt_from_disk_without_download(self, tmp_path, capsys):
         from tides.stations import get_station_index
 
         stations_dir = tmp_path / "stations"
@@ -366,6 +366,7 @@ class TestFetchAll:
             index = get_station_index()
         dl.assert_not_called()
         assert index[0]["id"] == "5"
+        assert "index rebuilt from 1 cached station files" in capsys.readouterr().err
 
 
 class TestStaleStationCache:
