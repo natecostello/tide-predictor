@@ -290,10 +290,10 @@ class TestGetStations:
 
 
 class TestFetchAll:
-    def _run(self, index_exists: bool, model_exists: bool, tmp_path):
+    def _run(self, index_exists: bool, model_exists: bool, tmp_path, content: str = "[]"):
         index = tmp_path / "station_index.json"
         if index_exists:
-            index.write_text("[]")
+            index.write_text(content)
         with (
             patch("tides.cache.fetch_station_data", return_value=[{"id": "1"}]) as fetch,
             patch("tides.stations._get_index_path", return_value=index),
@@ -316,12 +316,17 @@ class TestFetchAll:
     def test_already_present_items_are_skipped(self, tmp_path, capsys):
         fetch, get_index, ensure = self._run(True, True, tmp_path)
         fetch.assert_called_once()  # NOAA list always refreshed
-        get_index.assert_not_called()
+        get_index.assert_called_once()  # validates; no download for a valid index
         ensure.assert_not_called()
         err = capsys.readouterr().err
         assert "Station database: already present" in err
         assert "GOT5.6 model: already present" in err
         assert "Downloading" not in err
+
+    def test_corrupt_index_is_repaired_not_reported_present(self, tmp_path, capsys):
+        _, get_index, _ = self._run(True, True, tmp_path, content="{truncated")
+        get_index.assert_called_once()
+        assert "Station database: already present" not in capsys.readouterr().err
 
 
 class TestStaleStationCache:

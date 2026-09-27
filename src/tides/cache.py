@@ -242,10 +242,18 @@ def fetch_all() -> None:
     stations = fetch_station_data()
     print(f"NOAA station list: updated ({len(stations)} stations)", file=sys.stderr)
 
-    if _get_index_path().exists():
+    # Validate through get_station_index(): it repairs a missing or corrupt
+    # index (re-downloading) and only then may we report "already present".
+    index_path = _get_index_path()
+    was_valid = False
+    if index_path.exists():
+        try:
+            was_valid = isinstance(json.loads(index_path.read_text()), list)
+        except (json.JSONDecodeError, ValueError, OSError):
+            was_valid = False
+    get_station_index()  # downloads (and reports progress) only if needed
+    if was_valid:
         print("Station database: already present", file=sys.stderr)
-    else:
-        get_station_index()  # downloads and reports progress itself
 
     if _model_exists("GOT5.6"):
         print("GOT5.6 model: already present", file=sys.stderr)

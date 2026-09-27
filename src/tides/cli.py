@@ -447,8 +447,9 @@ def get(
 
 @app.command("fetch-model")
 def fetch_model() -> None:
-    """Pre-download everything needed offline: NOAA station list, global
-    station database and the GOT5.6 model (already-present items are skipped)."""
+    """Pre-download everything needed offline: always refreshes the NOAA
+    station list, and downloads the global station database and the GOT5.6
+    model only if not already present."""
     from tides.cache import StationDatabaseError, fetch_all
 
     try:

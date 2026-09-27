@@ -46,8 +46,8 @@ tides get -8.05,-34.87 --source model
 # Use FES2022 model (34 constituents, must be pre-downloaded)
 tides get 35.9,-75.6 --source model --model fes2022
 
-# Pre-download everything needed offline (NOAA station list, global station
-# database, GOT5.6); items already present are skipped
+# Pre-download everything needed offline: NOAA station list (always
+# refreshed), global station database and GOT5.6 (skipped if already present)
 tides fetch-model
 
 # View cache sizes
