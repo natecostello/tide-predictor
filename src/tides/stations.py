@@ -7,6 +7,7 @@ nearest-station lookup and harmonic prediction for ~8,000 stations worldwide.
 import datetime
 import json
 import sys
+from collections.abc import Iterator
 from pathlib import Path
 
 from tides.harmonics import predict_tides_range
@@ -63,7 +64,7 @@ def iter_stations_by_distance(
     index: list[dict],
     coord: Coordinate,
     max_distance_km: float = 100.0,
-):
+) -> Iterator[tuple[dict, float]]:
     """Yield (station_entry, distance_km) within range, nearest first."""
     in_range = []
     for s in index:

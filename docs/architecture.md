@@ -58,7 +58,7 @@ NOAA predictions are the gold standard for US waters — they come from the agen
 
 Downloads the [openwatersio/tide-database](https://github.com/openwatersio/tide-database) (~8,289 stations from NOAA and TICON sources) as a GitHub zip archive. Each station is a JSON file with harmonic constituents, datum offsets, and metadata.
 
-`_resolve_station` uses the nearest station *with harmonic constituents* within range (about 27% of the index -- mostly NOAA subordinate stations -- has none and is skipped). `predict_station_tides()` calls into `harmonics.py` to generate predictions from the station's constituents, applying the chart datum offset so heights are relative to the station's published datum (LAT or MLLW). When the chart datum is not published relative to MSL (e.g. STND with no datums), heights stay MSL-relative (`datums.station_heights_datum`).
+`find_nearest_usable_station()` returns the nearest station *with harmonic constituents* within range (about 27% of the index -- mostly NOAA subordinate stations -- has none and is skipped); `resolver.py`'s `_resolve_station` calls it. `predict_station_tides()` calls into `harmonics.py` to generate predictions from the station's constituents, applying the chart datum offset so heights are relative to the station's published datum (LAT or MLLW). When the chart datum is not published relative to MSL (e.g. STND with no datums), heights stay MSL-relative (`datums.station_heights_datum`).
 
 ### harmonics.py — Harmonic prediction engine
 
