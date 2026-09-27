@@ -14,10 +14,12 @@ SAMPLE_NOAA_EVENTS = [
     TideEvent(
         time=datetime.datetime(2026, 4, 15, 14, 32, tzinfo=datetime.timezone.utc),
         height=0.3,
+        kind="high",
     ),
     TideEvent(
         time=datetime.datetime(2026, 4, 15, 20, 45, tzinfo=datetime.timezone.utc),
         height=-0.1,
+        kind="low",
     ),
 ]
 
@@ -90,10 +92,12 @@ class TestGroupEventsByDate:
             TideEvent(
                 time=datetime.datetime(2026, 4, 15, 10, 0, tzinfo=datetime.timezone.utc),
                 height=0.5,
+                kind="high",
             ),
             TideEvent(
                 time=datetime.datetime(2026, 4, 15, 16, 0, tzinfo=datetime.timezone.utc),
                 height=-0.3,
+                kind="low",
             ),
         ]
         days = _group_events_by_date(
@@ -110,10 +114,12 @@ class TestGroupEventsByDate:
             TideEvent(
                 time=datetime.datetime(2026, 4, 15, 10, 0, tzinfo=datetime.timezone.utc),
                 height=0.5,
+                kind="high",
             ),
             TideEvent(
                 time=datetime.datetime(2026, 4, 16, 11, 0, tzinfo=datetime.timezone.utc),
                 height=0.8,
+                kind="high",
             ),
         ]
         days = _group_events_by_date(
@@ -142,14 +148,17 @@ class TestGroupEventsByDate:
             TideEvent(
                 time=datetime.datetime(2026, 4, 14, 10, 0, tzinfo=datetime.timezone.utc),
                 height=0.5,
+                kind="high",
             ),
             TideEvent(
                 time=datetime.datetime(2026, 4, 15, 12, 0, tzinfo=datetime.timezone.utc),
                 height=0.3,
+                kind="high",
             ),
             TideEvent(
                 time=datetime.datetime(2026, 4, 17, 8, 0, tzinfo=datetime.timezone.utc),
                 height=0.7,
+                kind="high",
             ),
         ]
         days = _group_events_by_date(
@@ -166,14 +175,17 @@ class TestGroupEventsByDate:
             TideEvent(
                 time=datetime.datetime(2026, 4, 15, 20, 0, tzinfo=datetime.timezone.utc),
                 height=-0.1,
+                kind="low",
             ),
             TideEvent(
                 time=datetime.datetime(2026, 4, 15, 8, 0, tzinfo=datetime.timezone.utc),
                 height=0.9,
+                kind="high",
             ),
             TideEvent(
                 time=datetime.datetime(2026, 4, 15, 14, 0, tzinfo=datetime.timezone.utc),
                 height=0.4,
+                kind="high",
             ),
         ]
         days = _group_events_by_date(
@@ -345,6 +357,7 @@ class TestApplyDatum:
                                 2026, 4, 15, 12, 0, tzinfo=datetime.timezone.utc
                             ),
                             height=0.5,
+                            kind="high",
                         )
                     ],
                 )
@@ -373,6 +386,7 @@ class TestApplyDatum:
                                 2026, 4, 15, 12, 0, tzinfo=datetime.timezone.utc
                             ),
                             height=0.5,
+                            kind="high",
                         )
                     ],
                 )
@@ -406,6 +420,7 @@ class TestApplyDatum:
                                 2026, 4, 15, 12, 0, tzinfo=datetime.timezone.utc
                             ),
                             height=2.5,  # 2.5m relative to LAT
+                            kind="high",
                         )
                     ],
                 )
@@ -437,6 +452,7 @@ class TestApplyDatum:
                                 2026, 4, 15, 12, 0, tzinfo=datetime.timezone.utc
                             ),
                             height=0.5,
+                            kind="high",
                         )
                     ],
                 )

@@ -87,6 +87,19 @@ negative-coordinate tokens so Click does not parse them as option flags.
 | `--verbose` | `-v` | Show source details |
 | `--version` | | Show version |
 
+## JSON output
+
+`--json` prints the coordinate, source, model, datum, timezone and unit, plus one entry per **requested** day (a day stays in the list with `"tides": []` when `--between` filtered out all of its events). Each event has:
+
+| Key | Example | Meaning |
+|---|---|---|
+| `time` | `"05:17"` | Clock time (local with `--local`, else UTC) |
+| `height` | `2.3` | Height in the chosen unit and datum |
+| `datetime` | `"2026-09-28T05:17-03:00"` | Full ISO 8601 timestamp with UTC offset, on the same clock as `time` |
+| `type` | `"high"` | `"high"` or `"low"` |
+
+`--verbose` (plain output) prefixes each line with the source and datum, e.g. `[Station: Fortaleza USCGS, 150.1km, MLLW]`. When no events match the range or filter, plain output prints nothing on stdout and a note on stderr (exit 0).
+
 ## Data Sources
 
 **NOAA CO-OPS** (US waters): Uses official tide station predictions. Auto-selected when a station is within 25km of the coordinates. Heights are NOAA's own published values in the requested datum. NOAA subordinate stations publish MLLW only; for other datums, `auto` mode falls through to the station database or model (with a note on stderr), and `--source noaa` reports an error.

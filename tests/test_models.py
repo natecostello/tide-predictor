@@ -43,6 +43,7 @@ class TestTideEvent:
         t = TideEvent(
             time=datetime.datetime(2026, 4, 15, 14, 32, tzinfo=datetime.timezone.utc),
             height=0.3,
+            kind="high",
         )
         assert t.height == 0.3
 
@@ -50,6 +51,7 @@ class TestTideEvent:
         t = TideEvent(
             time=datetime.datetime(2026, 4, 15, 14, 32, tzinfo=datetime.timezone.utc),
             height=0.3,
+            kind="high",
         )
         assert abs(t.height_ft - 0.984252) < 0.001
 
@@ -60,10 +62,12 @@ class TestTideDay:
             TideEvent(
                 time=datetime.datetime(2026, 4, 15, 14, 32, tzinfo=datetime.timezone.utc),
                 height=0.3,
+                kind="high",
             ),
             TideEvent(
                 time=datetime.datetime(2026, 4, 15, 20, 45, tzinfo=datetime.timezone.utc),
                 height=-0.1,
+                kind="low",
             ),
         ]
         day = TideDay(date=datetime.date(2026, 4, 15), events=events)

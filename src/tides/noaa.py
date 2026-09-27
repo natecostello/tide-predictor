@@ -157,5 +157,7 @@ def parse_predictions_response(data: dict) -> list[TideEvent]:
         time = datetime.datetime.strptime(p["t"], "%Y-%m-%d %H:%M")
         time = time.replace(tzinfo=datetime.timezone.utc)
         height = float(p["v"])
-        events.append(TideEvent(time=time, height=height))
+        # NOAA hilo "type" is H/L, and HH/LL/HL/LH at mixed-tide stations.
+        kind = "high" if str(p.get("type", "")).upper().startswith("H") else "low"
+        events.append(TideEvent(time=time, height=height, kind=kind))
     return events

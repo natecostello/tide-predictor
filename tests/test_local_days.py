@@ -18,7 +18,11 @@ AUCKLAND = ZoneInfo("Pacific/Auckland")  # UTC+12 / +13 (DST from 2026-09-27)
 
 
 def _ev(y, mo, d, h, mi, height=1.0):
-    return TideEvent(time=datetime.datetime(y, mo, d, h, mi, tzinfo=UTC), height=height)
+    return TideEvent(
+        time=datetime.datetime(y, mo, d, h, mi, tzinfo=UTC),
+        height=height,
+        kind="high" if height >= 0 else "low",
+    )
 
 
 def _local_days(days, tz):

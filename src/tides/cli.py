@@ -203,6 +203,11 @@ def _report_unexpected(exc: Exception, context: str) -> None:
         print("Set TIDES_DEBUG=1 for a traceback.", file=sys.stderr)
 
 
+def _rounded(height: float, precision: int) -> float:
+    """Round for display, normalizing negative zero (-0.0 -> 0.0)."""
+    return round(height, precision) + 0.0
+
+
 def _finite_height(height: float) -> float:
     """Refuse to render NaN/inf heights (they would print as 'nan' or produce
     invalid JSON)."""
@@ -229,13 +234,16 @@ def format_plain(
     multi_day = len(result.days) > 1
     unit = "ft" if feet else "m"
 
+    datum = result.datum.upper()
     verbose_prefix = ""
     if verbose and result.source_type == Source.NOAA and result.station_name:
-        verbose_prefix = f"[NOAA: {result.station_name}, {result.station_distance_km}km] "
+        verbose_prefix = f"[NOAA: {result.station_name}, {result.station_distance_km}km, {datum}] "
     elif verbose and result.source_type == Source.STATION and result.station_name:
-        verbose_prefix = f"[Station: {result.station_name}, {result.station_distance_km}km] "
+        verbose_prefix = (
+            f"[Station: {result.station_name}, {result.station_distance_km}km, {datum}] "
+        )
     elif verbose and result.source_type == Source.MODEL and result.model_name:
-        verbose_prefix = f"[Model: {result.model_name}] "
+        verbose_prefix = f"[Model: {result.model_name}, {datum}] "
 
     for day in result.days:
         event_strs = []
@@ -252,7 +260,7 @@ def format_plain(
                 if not _in_window(t, between):
                     continue
 
-            height = _finite_height(event.height_ft if feet else event.height)
+            height = _rounded(_finite_height(event.height_ft if feet else event.height), precision)
             height_str = f"{height:.{precision}f}{unit}"
             event_strs.append(f"{height_str}@{time_str}")
 
@@ -310,17 +318,20 @@ def format_json(
             tides_list.append(
                 {
                     "time": time_str,
-                    "height": round(height, precision),
+                    "height": _rounded(height, precision),
+                    "datetime": display_time.isoformat(timespec="minutes"),
+                    "type": event.kind,
                 }
             )
 
-        if tides_list:
-            days_list.append(
-                {
-                    "date": day.date.isoformat(),
-                    "tides": tides_list,
-                }
-            )
+        # Every requested day is present, even when --between filtered out
+        # all of its events, so consumers can tell "filtered" from "absent".
+        days_list.append(
+            {
+                "date": day.date.isoformat(),
+                "tides": tides_list,
+            }
+        )
 
     output = {
         "coordinate": {"lat": result.coordinate.lat, "lon": result.coordinate.lon},
@@ -470,6 +481,10 @@ def get(
         raise SystemExit(2)
     if output:
         print(output)
+    elif not json_output:
+        # JSON carries the (empty) structure itself; plain output would
+        # otherwise be silently empty.
+        print("Note: no tide events matched the requested range/filter.", file=sys.stderr)
 
 
 @app.command("fetch-model")

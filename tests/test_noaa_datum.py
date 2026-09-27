@@ -64,6 +64,7 @@ def _model_result() -> TideResult:
                     TideEvent(
                         time=datetime.datetime(2026, 9, 28, 3, tzinfo=datetime.timezone.utc),
                         height=0.1,
+                        kind="high",
                     )
                 ],
             )
