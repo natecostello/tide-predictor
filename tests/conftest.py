@@ -72,15 +72,22 @@ def _block_network(
         return
 
     real_connect = socket.socket.connect
+    real_connect_ex = socket.socket.connect_ex
+    unix_family = getattr(socket, "AF_UNIX", None)
+
+    def _blocked(address):
+        return NetworkBlockedError(f"network access blocked in unit tests: {address!r}")
 
     def guarded_connect(self, address):
-        if self.family == getattr(socket, "AF_UNIX", None):
+        if self.family == unix_family:
             return real_connect(self, address)
-        raise NetworkBlockedError(f"network access blocked in unit tests: {address!r}")
+        raise _blocked(address)
+
+    def guarded_connect_ex(self, address):
+        # connect_ex returns an errno int; keep that contract for AF_UNIX.
+        if self.family == unix_family:
+            return real_connect_ex(self, address)
+        raise _blocked(address)
 
     monkeypatch.setattr(socket.socket, "connect", guarded_connect)
-    monkeypatch.setattr(
-        socket.socket,
-        "connect_ex",
-        lambda self, address: guarded_connect(self, address),
-    )
+    monkeypatch.setattr(socket.socket, "connect_ex", guarded_connect_ex)

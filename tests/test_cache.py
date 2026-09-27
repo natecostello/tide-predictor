@@ -432,3 +432,28 @@ class TestClearCache:
     def test_clear_invalid_name_raises(self):
         with pytest.raises(ValueError, match="Unknown cache name"):
             clear_cache("bogus")
+
+
+class TestNetworkGuard:
+    """The conftest autouse guard blocks inet sockets but not AF_UNIX."""
+
+    def test_inet_connect_blocked(self):
+        import socket
+
+        from conftest import NetworkBlockedError
+
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            with pytest.raises(NetworkBlockedError):
+                s.connect(("127.0.0.1", 9))
+            with pytest.raises(NetworkBlockedError):
+                s.connect_ex(("127.0.0.1", 9))
+
+    @pytest.mark.skipif(not hasattr(__import__("socket"), "AF_UNIX"), reason="no AF_UNIX")
+    def test_unix_connect_ex_returns_errno(self):
+        import socket
+
+        # Short absolute path: AF_UNIX paths are limited to ~104 bytes on macOS,
+        # which tmp_path can exceed.
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+            rc = s.connect_ex("/nonexistent-tides-test.sock")
+        assert isinstance(rc, int) and rc != 0
