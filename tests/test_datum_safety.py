@@ -174,7 +174,7 @@ class TestStationDatums:
         assert first == second
         assert first["mllw"] == pytest.approx(-1.0)  # published wins over computed -0.8
         assert first["lat"] == -1.5
-        assert (tmp_path / "cache" / "tides" / "datums" / "stations.v1.json").exists()
+        assert (tmp_path / "cache" / "tides" / "datums" / "stations.v2.json").exists()
 
     def test_missing_datum_without_harmonics_errors(self):
         station = {**PARTIAL_DATUM_STATION, "harmonic_constituents": []}

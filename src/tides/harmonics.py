@@ -24,24 +24,26 @@ from tides.ocean_model import (
 )
 
 # Correction type for station harmonic constants.
-# OTIS uses the standard Doodson/IHO astronomical argument conventions,
-# which match how NOAA and IHO-sourced harmonic constants are analyzed.
-# KNOWN LIMITATION (tracked in #15): pyTMD's OTIS branch zeroes constituents
-# outside its fixed ~33-constituent table, and infer_minor double-counts on
-# top of complete station analyses (~3.7 cm vs ~1.8 cm RMS at Golden Gate).
-# #15 switches to GOT without infer_minor and bumps the station datum cache
-# version, so datums cached with this setting are never reused afterwards.
-STATION_CORRECTIONS = "OTIS"
+# pyTMD's "GOT" branch computes astronomical arguments and frequencies from
+# Doodson numbers for every constituent it recognizes. The "OTIS" branch takes
+# frequencies from a fixed ~33-constituent table and silently gives any other
+# constituent omega = 0 (a constant), which degraded TICON stations such as
+# Fortaleza (25 constituents frozen). Station analyses are complete by design,
+# so minor constituents are NOT inferred on top of them.
+STATION_CORRECTIONS = "GOT"
 
 # Map station constituent names to pyTMD's expected names.
 # NOAA uses abbreviations (LAM2, RHO) that pyTMD doesn't recognize;
 # pyTMD uses the full IHO names (lambda2, rho1).
+# "3L2" is deliberately NOT mapped: pyTMD rejects "3l2", and its "l2'" could
+# not be confirmed to be the same constituent (same Doodson number/frequency),
+# so 3L2 is reported as skipped rather than predicted at a possibly wrong
+# frequency. Its amplitude is typically a few mm.
 _NAME_MAP: dict[str, str] = {
     "lam2": "lambda2",
     "rho": "rho1",
     "ep2": "eps2",
     "sgm": "sigma1",
-    "3l2": "l2'",
 }
 
 
@@ -107,10 +109,7 @@ def predict_elevations(constituents: list[dict], t: np.ndarray, chunks: int = 1)
     parts = []
     for c in np.array_split(np.asarray(t, dtype=float), max(1, chunks)):
         tide = pyTMD.predict.time_series(c, ds, corrections=STATION_CORRECTIONS)
-        minor = pyTMD.predict.infer_minor(c, ds, corrections=STATION_CORRECTIONS)
-        tide_arr = np.asarray(getattr(tide, "values", tide), dtype=float).ravel()
-        minor_arr = np.asarray(getattr(minor, "values", minor), dtype=float).ravel()
-        parts.append(tide_arr + minor_arr)
+        parts.append(np.asarray(getattr(tide, "values", tide), dtype=float).ravel())
     return np.concatenate(parts)
 
 

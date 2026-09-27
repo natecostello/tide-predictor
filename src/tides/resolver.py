@@ -178,19 +178,17 @@ def _resolve_station(
     tz: datetime.tzinfo | None = None,
 ) -> tuple[TideResult, dict] | None:
     from tides.stations import (
-        find_nearest_station,
+        find_nearest_usable_station,
         get_station_index,
-        load_station,
         predict_station_tides,
     )
 
     index = get_station_index()
-    result = find_nearest_station(index, coord, max_distance_km)
+    result = find_nearest_usable_station(index, coord, max_distance_km)
     if result is None:
         return None
 
-    entry, distance = result
-    station = load_station(entry)
+    entry, station, distance = result
     fetch_begin, fetch_end = _fetch_dates(begin_date, end_date, tz)
     events = predict_station_tides(station, fetch_begin, fetch_end)
     if not events:

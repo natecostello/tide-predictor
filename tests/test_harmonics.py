@@ -85,10 +85,11 @@ class TestBuildDataset:
         ds = _build_dataset([{"name": "SGM", "amplitude": 0.01, "phase": 0.0}])
         assert "sigma1" in ds.data_vars
 
-    def test_normalizes_3l2_to_l2_prime(self):
-        """Ticon's 3L2 (third-degree) maps to pyTMD's l2'."""
+    def test_3l2_is_not_mapped_to_l2_prime(self, capsys):
+        """3L2 is not confirmed to be pyTMD's l2', so it is skipped (#15)."""
         ds = _build_dataset([{"name": "3L2", "amplitude": 0.01, "phase": 0.0}])
-        assert "l2'" in ds.data_vars
+        assert "l2'" not in ds.data_vars
+        assert "3L2" in capsys.readouterr().err
 
     def test_skips_unrecognized_with_warning(self, capsys):
         """Unrecognized constituents are skipped with a stderr warning."""

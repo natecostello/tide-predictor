@@ -59,6 +59,22 @@ def build_station_index(stations_dir: Path | None = None) -> list[dict]:
     return index
 
 
+def iter_stations_by_distance(
+    index: list[dict],
+    coord: Coordinate,
+    max_distance_km: float = 100.0,
+):
+    """Yield (station_entry, distance_km) within range, nearest first."""
+    in_range = []
+    for s in index:
+        d = haversine_km(coord.lat, coord.lon, s["lat"], s["lon"])
+        if d <= max_distance_km:
+            in_range.append((d, s))
+    in_range.sort(key=lambda pair: pair[0])
+    for d, s in in_range:
+        yield s, d
+
+
 def find_nearest_station(
     index: list[dict],
     coord: Coordinate,
@@ -74,16 +90,29 @@ def find_nearest_station(
     Returns:
         (station_entry, distance_km) or None if nothing within range
     """
-    best = None
-    best_dist = float("inf")
-    for s in index:
-        d = haversine_km(coord.lat, coord.lon, s["lat"], s["lon"])
-        if d < best_dist:
-            best = s
-            best_dist = d
-    if best is None or best_dist > max_distance_km:
-        return None
-    return best, best_dist
+    return next(iter_stations_by_distance(index, coord, max_distance_km), None)
+
+
+def find_nearest_usable_station(
+    index: list[dict],
+    coord: Coordinate,
+    max_distance_km: float = 100.0,
+) -> tuple[dict, dict, float] | None:
+    """Nearest station within range that can actually predict.
+
+    About 27% of the index (NOAA subordinate stations and a few others) has no
+    harmonic constituents; skip those instead of giving up on the nearest one.
+
+    Returns (station_entry, station_data, distance_km) or None.
+    """
+    for entry, distance in iter_stations_by_distance(index, coord, max_distance_km):
+        try:
+            station = load_station(entry)
+        except (OSError, ValueError):
+            continue
+        if station.get("harmonic_constituents"):
+            return entry, station, distance
+    return None
 
 
 def load_station(station_entry: dict) -> dict:
