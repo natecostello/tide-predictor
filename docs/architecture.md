@@ -138,9 +138,10 @@ Wraps `timezonefinder` to map coordinates to IANA timezone names, used by `--loc
 │   ├── ticon/*.json                     4,838 TICON stations
 │   └── station_index.json               Searchable index
 └── datums/                              Computed datum offsets (versioned; older files unused)
-    ├── got5.6.v2.json                   Cached per model, per point
-    ├── fes2022.v2.json
-    └── eot20.v2.json
+    ├── got5.6.v3.json                   Cached per model, per point (0.01 deg key)
+    ├── fes2022.v3.json
+    ├── eot20.v3.json
+    └── stations.v1.json                 Station datums computed from harmonics, per station id
 
 ~/Library/Caches/pytmd/                  Model cache (platformdirs)
 ├── GOT5.5/                              694 MB (dependency of GOT5.6)
