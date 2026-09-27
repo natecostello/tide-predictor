@@ -11,6 +11,7 @@ from tides.cache import (
     STATION_CACHE_MAX_AGE_DAYS,
     _dir_size,
     _model_exists,
+    atomic_write_text,
     clear_cache,
     ensure_model_data,
     fetch_all,
@@ -18,11 +19,11 @@ from tides.cache import (
     format_size,
     get_cache_dir,
     get_cache_info,
-    get_model_dir,
     get_station_cache_path,
     get_stations,
     is_station_cache_fresh,
     load_station_cache,
+    plan_clear,
     save_station_cache,
 )
 
@@ -48,19 +49,6 @@ class TestGetCacheDir:
         with patch.dict(os.environ, {"XDG_CACHE_HOME": str(tmp_path)}):
             d = get_cache_dir()
             assert d.exists()
-
-
-class TestGetModelDir:
-    def test_model_dir_under_cache(self, tmp_path):
-        with patch.dict(os.environ, {"XDG_CACHE_HOME": str(tmp_path)}):
-            d = get_model_dir()
-            assert d == tmp_path / "tides" / "models"
-
-    def test_model_dir_is_created(self, tmp_path):
-        with patch.dict(os.environ, {"XDG_CACHE_HOME": str(tmp_path)}):
-            d = get_model_dir()
-            assert d.exists()
-            assert d.is_dir()
 
 
 class TestGetStationCachePath:
@@ -516,6 +504,187 @@ class TestClearCache:
     def test_clear_invalid_name_raises(self):
         with pytest.raises(ValueError, match="Unknown cache name"):
             clear_cache("bogus")
+
+
+class TestSafeClear:
+    """#17: default clear never touches EOT20 / FES2022 / HAMTIDE11."""
+
+    @pytest.fixture
+    def caches(self, tmp_path, monkeypatch):
+        pytmd = tmp_path / "pytmd"
+        for d in ("GOT5.5", "GOT5.6", "EOT20", "fes2022b", "hamtide"):
+            (pytmd / d).mkdir(parents=True)
+            (pytmd / d / "f.nc").write_bytes(b"x" * 10)
+        app = tmp_path / "cache" / "tides"
+        (app / "datums").mkdir(parents=True)
+        (app / "datums" / "got5.6.v3.json").write_text("{}")
+        (app / "noaa_stations.json").write_text("[]")
+        monkeypatch.setenv("TIDES_PYTMD_DIR", str(pytmd))
+        return app, pytmd
+
+    def test_default_keeps_manual_and_large_models(self, caches):
+        app, pytmd = caches
+        clear_cache(None)
+        assert not app.exists()
+        assert not (pytmd / "GOT5.6").exists() and not (pytmd / "GOT5.5").exists()
+        for kept in ("EOT20", "fes2022b", "hamtide"):
+            assert (pytmd / kept / "f.nc").exists(), kept
+
+    def test_plan_matches_default_clear(self, caches):
+        names = [i["name"] for i in plan_clear(None)]
+        assert names == ["App cache", "GOT5.5", "GOT5.6"]
+
+    def test_all_includes_every_model(self, caches):
+        _, pytmd = caches
+        names = {i["name"] for i in plan_clear(None, include_all=True)}
+        assert {"EOT20", "FES2022", "HAMTIDE11"} <= names
+        clear_cache(None, include_all=True)
+        assert not any((pytmd / d).exists() for d in ("EOT20", "fes2022b", "hamtide"))
+
+    def test_named_manual_model_clears_only_it(self, caches):
+        _, pytmd = caches
+        clear_cache("fes2022")
+        assert not (pytmd / "fes2022b").exists()
+        assert (pytmd / "EOT20").exists()
+
+    def test_clear_datums(self, caches):
+        app, _ = caches
+        assert [i["name"] for i in plan_clear("datums")] == ["Datum cache"]
+        clear_cache("datums")
+        assert not (app / "datums").exists()
+        assert (app / "noaa_stations.json").exists()
+
+    def test_cache_info_lists_datums(self, caches):
+        names = [i["name"] for i in get_cache_info()["app_cache"]["items"]]
+        assert "Datum cache" in names
+
+    def test_os_error_is_not_swallowed(self, caches, monkeypatch):
+        def boom(*a, **k):
+            raise OSError("Permission denied")
+
+        monkeypatch.setattr("tides.cache.shutil.rmtree", boom)
+        with pytest.raises(OSError):
+            clear_cache(None)
+
+
+class TestAtomicWrite:
+    def test_replaces_content_and_leaves_no_temp(self, tmp_path):
+        d = tmp_path / "w"
+        d.mkdir()
+        f = d / "x.json"
+        f.write_text("old")
+        atomic_write_text(f, "new")
+        assert f.read_text() == "new"
+        assert [p.name for p in d.iterdir()] == ["x.json"]
+
+    def test_failed_replace_keeps_old_file(self, tmp_path, monkeypatch):
+        d = tmp_path / "w"
+        d.mkdir()
+        f = d / "x.json"
+        f.write_text("old")
+
+        def fail(*a, **k):
+            raise OSError("crash")
+
+        monkeypatch.setattr("tides.cache.os.replace", fail)
+        with pytest.raises(OSError):
+            atomic_write_text(f, "new")
+        assert f.read_text() == "old"
+        assert [p.name for p in d.iterdir()] == ["x.json"]
+
+
+class TestEot20Marker:
+    def test_partial_install_is_removed_before_redownload(self, tmp_path, monkeypatch):
+        from tides import cache
+
+        pytmd = tmp_path / "pytmd"
+        partial = pytmd / "EOT20" / "ocean_tides"
+        partial.mkdir(parents=True)
+        (partial / "M2.nc").write_bytes(b"x")
+        other = pytmd / "GOT5.6"
+        other.mkdir(parents=True)
+        monkeypatch.setattr("tides.cache._get_pytmd_data_dir", lambda: pytmd)
+        with patch("httpx.stream", side_effect=RuntimeError("stop before download")):
+            with pytest.raises(RuntimeError):
+                cache._fetch_eot20()
+        assert not (pytmd / "EOT20").exists()  # partial removed
+        assert other.exists()  # nothing else touched
+
+    def test_complete_install_is_left_alone(self, tmp_path, monkeypatch):
+        from tides import cache
+
+        pytmd = tmp_path / "pytmd"
+        (pytmd / "EOT20").mkdir(parents=True)
+        (pytmd / "EOT20" / cache.EOT20_COMPLETE_MARKER).write_text("ok")
+        monkeypatch.setattr("tides.cache._get_pytmd_data_dir", lambda: pytmd)
+        with patch("httpx.stream") as stream:
+            cache._fetch_eot20()
+        stream.assert_not_called()
+
+    def test_existing_install_gets_marker(self, tmp_path, monkeypatch):
+        from tides import cache
+
+        pytmd = tmp_path / "pytmd"
+        (pytmd / "EOT20").mkdir(parents=True)
+        monkeypatch.setattr("tides.cache._get_pytmd_data_dir", lambda: pytmd)
+        with patch("tides.cache._model_exists", return_value=True):
+            cache.ensure_model_data("EOT20")
+        assert (pytmd / "EOT20" / cache.EOT20_COMPLETE_MARKER).exists()
+
+    def test_listing_override_never_redirects_model_fetch(self, tmp_path, monkeypatch):
+        from tides import cache
+
+        monkeypatch.setenv("TIDES_PYTMD_DIR", str(tmp_path / "sandbox"))
+        real = tmp_path / "real"
+        monkeypatch.setattr("tides.cache._get_pytmd_data_dir", lambda: real)
+        assert cache._get_listing_pytmd_dir() == tmp_path / "sandbox"
+        (real / "EOT20").mkdir(parents=True)
+        (real / "EOT20" / cache.EOT20_COMPLETE_MARKER).write_text("ok")
+        with patch("httpx.stream") as stream:
+            cache._fetch_eot20()  # looks in the real dir, not the override
+        stream.assert_not_called()
+
+    def test_missing_inner_archive_is_not_marked_complete(self, tmp_path, monkeypatch):
+        import io
+        import zipfile
+
+        from tides import cache
+
+        pytmd = tmp_path / "pytmd"
+        monkeypatch.setattr("tides.cache._get_pytmd_data_dir", lambda: pytmd)
+        # Outer archive with only ocean_tides.zip (load_tides.zip missing).
+        inner = io.BytesIO()
+        with zipfile.ZipFile(inner, "w") as z:
+            z.writestr("ocean_tides/M2.nc", b"x")
+        outer = io.BytesIO()
+        with zipfile.ZipFile(outer, "w") as z:
+            z.writestr("ocean_tides.zip", inner.getvalue())
+
+        class FakeResponse:
+            headers = {}
+
+            def raise_for_status(self):
+                pass
+
+            def iter_bytes(self, chunk_size=None):
+                yield outer.getvalue()
+
+        class FakeStream:
+            def __enter__(self):
+                return FakeResponse()
+
+            def __exit__(self, *a):
+                return False
+
+        # A stale inner archive left over from an earlier failed attempt must
+        # not satisfy the check for the new download.
+        pytmd.mkdir(parents=True, exist_ok=True)
+        (pytmd / "load_tides.zip").write_bytes(b"stale")
+        with patch("httpx.stream", return_value=FakeStream()):
+            with pytest.raises(OSError, match="load_tides.zip"):
+                cache._fetch_eot20()
+        assert not (pytmd / "EOT20" / cache.EOT20_COMPLETE_MARKER).exists()
+        assert not list(pytmd.glob(".eot20-staging-*"))  # staging cleaned up
 
 
 class TestNetworkGuard:

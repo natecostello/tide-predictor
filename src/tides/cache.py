@@ -22,6 +22,37 @@ PYTMD_MODEL_DIRS: dict[str, str] = {
     "HAMTIDE11": "hamtide",
 }
 
+# Models re-downloaded automatically on next use; the only models a bare
+# `tides cache clear` removes. EOT20 (~2.3 GB download) and the manually
+# downloaded FES2022 / HAMTIDE11 are only removed when named or with --all.
+AUTO_DOWNLOADED_MODELS = ("GOT5.5", "GOT5.6")
+
+# Written into EOT20/ once extraction fully completes.
+EOT20_COMPLETE_MARKER = ".tides-complete"
+
+DATUM_CACHE_DIRNAME = "datums"
+
+
+def atomic_write_text(path: Path, text: str) -> None:
+    """Write `text` to `path` atomically (temp file in the same dir + replace).
+
+    A crash mid-write leaves the previous file intact instead of a truncated
+    one.
+    """
+    import tempfile
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        "w", dir=path.parent, prefix=f".{path.name}.", suffix=".tmp", delete=False
+    ) as tmp:
+        tmp.write(text)
+        tmp_path = Path(tmp.name)
+    try:
+        os.replace(tmp_path, path)
+    except BaseException:
+        tmp_path.unlink(missing_ok=True)
+        raise
+
 
 def get_cache_dir(create: bool = True) -> Path:
     xdg = os.environ.get("XDG_CACHE_HOME")
@@ -33,12 +64,6 @@ def get_cache_dir(create: bool = True) -> Path:
     if create:
         cache_dir.mkdir(parents=True, exist_ok=True)
     return cache_dir
-
-
-def get_model_dir() -> Path:
-    d = get_cache_dir() / "models"
-    d.mkdir(parents=True, exist_ok=True)
-    return d
 
 
 def get_station_cache_path() -> Path:
@@ -57,8 +82,7 @@ def is_station_cache_fresh() -> bool:
 
 
 def save_station_cache(stations: list[dict]) -> None:
-    path = get_station_cache_path()
-    path.write_text(json.dumps(stations))
+    atomic_write_text(get_station_cache_path(), json.dumps(stations))
 
 
 def load_station_cache() -> list[dict] | None:
@@ -88,10 +112,27 @@ def _model_exists(model_name: str) -> bool:
 
 
 def _get_pytmd_data_dir() -> Path:
-    """Get pyTMD's default data directory (platformdirs cache)."""
+    """pyTMD's real data directory (platformdirs cache).
+
+    Used by EOT20's fetch/marker paths so they land where pyTMD looks. GOT
+    fetches call pyTMD's own fetch_gsfc_got() directly and rely on its
+    internal default, which is this same directory.
+    """
     import platformdirs
 
     return Path(platformdirs.user_cache_dir("pytmd"))
+
+
+def _get_listing_pytmd_dir() -> Path:
+    """pyTMD directory as seen by `tides cache` listing and clearing.
+
+    TIDES_PYTMD_DIR is an undocumented override for tests/sandboxes. It only
+    redirects listing/clearing (get_cache_info, plan_clear, clear_cache),
+    never model downloads, so it cannot put model files where pyTMD won't
+    find them.
+    """
+    override = os.environ.get("TIDES_PYTMD_DIR")
+    return Path(override) if override else _get_pytmd_data_dir()
 
 
 def _fetch_got() -> None:
@@ -109,13 +150,18 @@ def _fetch_eot20() -> None:
     import httpx
 
     data_dir = _get_pytmd_data_dir()
-    eot_dir = data_dir / "EOT20" / "ocean_tides"
-    if eot_dir.exists() and any(eot_dir.iterdir()):
+    eot_base = data_dir / "EOT20"
+    if (eot_base / EOT20_COMPLETE_MARKER).exists():
         return
+    if eot_base.exists():
+        # No completion marker: a previous extraction was interrupted. Remove
+        # only the EOT20 directory and start over.
+        shutil.rmtree(eot_base)
 
     print("Downloading EOT20 tidal model (~2.3GB)...", file=sys.stderr)
-    tmp_path = Path(tempfile.mktemp(suffix=".zip", dir=data_dir))
     data_dir.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(suffix=".zip", dir=data_dir, delete=False) as tmp:
+        tmp_path = Path(tmp.name)
     try:
         with httpx.stream("GET", EOT20_URL, timeout=600, follow_redirects=True) as response:
             response.raise_for_status()
@@ -138,19 +184,25 @@ def _fetch_eot20() -> None:
                 print(file=sys.stderr)
 
         print("Extracting...", file=sys.stderr)
-        with zipfile.ZipFile(tmp_path) as zf:
-            zf.extractall(data_dir)
+        # Extract into a fresh staging dir so leftovers from a failed attempt
+        # (e.g. stale inner zips in data_dir) can never satisfy the checks.
+        with tempfile.TemporaryDirectory(dir=data_dir, prefix=".eot20-staging-") as staging:
+            staging_dir = Path(staging)
+            with zipfile.ZipFile(tmp_path) as zf:
+                zf.extractall(staging_dir)
 
-        # SEANOE archive contains inner ZIPs (ocean_tides.zip, load_tides.zip)
-        eot_base = data_dir / "EOT20"
-        eot_base.mkdir(exist_ok=True)
-        for inner_name in ["ocean_tides.zip", "load_tides.zip"]:
-            inner_path = data_dir / inner_name
-            if inner_path.exists():
-                with zipfile.ZipFile(inner_path) as inner_zf:
+            # SEANOE archive contains inner ZIPs (ocean_tides.zip, load_tides.zip)
+            inner_names = ["ocean_tides.zip", "load_tides.zip"]
+            missing = [n for n in inner_names if not (staging_dir / n).exists()]
+            if missing:
+                # A truncated or malformed download: never mark it complete.
+                raise OSError(f"EOT20 archive is incomplete (missing {', '.join(missing)})")
+            eot_base.mkdir(exist_ok=True)
+            for inner_name in inner_names:
+                with zipfile.ZipFile(staging_dir / inner_name) as inner_zf:
                     inner_zf.extractall(eot_base)
-                inner_path.unlink()
 
+        (eot_base / EOT20_COMPLETE_MARKER).write_text("ok\n")
         print("EOT20 download complete.", file=sys.stderr)
     finally:
         tmp_path.unlink(missing_ok=True)
@@ -158,6 +210,12 @@ def _fetch_eot20() -> None:
 
 def ensure_model_data(model_name: str = "GOT5.6") -> None:
     if _model_exists(model_name):
+        if model_name == "EOT20":
+            # Existing complete installs predate the marker: record it once so
+            # a later partial-install check never re-downloads them.
+            marker = _get_pytmd_data_dir() / "EOT20" / EOT20_COMPLETE_MARKER
+            if not marker.exists() and marker.parent.exists():
+                marker.write_text("ok\n")
         return
 
     if model_name in ("GOT5.6", "GOT5.5"):
@@ -285,10 +343,11 @@ def format_size(size_bytes: int) -> str:
 def get_cache_info() -> dict:
     """Return structured cache information for both app and model caches."""
     app_dir = get_cache_dir(create=False)
-    pytmd_dir = _get_pytmd_data_dir()
+    pytmd_dir = _get_listing_pytmd_dir()
 
     # App cache breakdown
     stations_dir = app_dir / "stations"
+    datums_dir = app_dir / DATUM_CACHE_DIRNAME
     noaa_stations_path = app_dir / STATION_CACHE_FILENAME
 
     app_items = []
@@ -304,6 +363,9 @@ def get_cache_info() -> dict:
     if stations_dir.exists():
         size = _dir_size(stations_dir)
         app_items.append({"name": "Station database", "path": str(stations_dir), "size": size})
+    if datums_dir.exists():
+        size = _dir_size(datums_dir)
+        app_items.append({"name": "Datum cache", "path": str(datums_dir), "size": size})
 
     # pyTMD model cache breakdown
     model_items = []
@@ -319,47 +381,60 @@ def get_cache_info() -> dict:
     }
 
 
-def clear_cache(name: str | None = None) -> int:
+def _item(name: str, path: Path) -> dict:
+    size = path.stat().st_size if path.is_file() else _dir_size(path)
+    return {"name": name, "path": str(path), "size": size}
+
+
+def plan_clear(name: str | None = None, include_all: bool = False) -> list[dict]:
+    """List exactly what clear_cache(name, include_all) would remove.
+
+    Each item is {name, path, size}; only existing paths are listed.
+
+    - name None: the app cache dir plus auto-downloaded models (GOT5.5,
+      GOT5.6). With include_all, every model (EOT20, FES2022, HAMTIDE11 too).
+    - "stations": NOAA station list + global station database.
+    - "datums": computed datum cache.
+    - a model name: that model's directory in pyTMD's cache.
+    """
+    app_dir = get_cache_dir(create=False)
+    pytmd_dir = _get_listing_pytmd_dir()
+
+    if name is None:
+        candidates = [("App cache", app_dir)]
+        models = PYTMD_MODEL_DIRS if include_all else AUTO_DOWNLOADED_MODELS
+        candidates += [(m, pytmd_dir / PYTMD_MODEL_DIRS[m]) for m in models]
+    else:
+        name_upper = name.upper()
+        if name_upper == "STATIONS":
+            candidates = [
+                ("NOAA station list", app_dir / STATION_CACHE_FILENAME),
+                ("Station database", app_dir / "stations"),
+            ]
+        elif name_upper == "DATUMS":
+            candidates = [("Datum cache", app_dir / DATUM_CACHE_DIRNAME)]
+        elif name_upper in PYTMD_MODEL_DIRS:
+            candidates = [(name_upper, pytmd_dir / PYTMD_MODEL_DIRS[name_upper])]
+        else:
+            valid = ["stations", "datums"] + [n.lower() for n in PYTMD_MODEL_DIRS]
+            raise ValueError(f"Unknown cache name '{name}'. Valid names: {', '.join(valid)}")
+
+    return [_item(label, path) for label, path in candidates if path.exists()]
+
+
+def clear_cache(name: str | None = None, include_all: bool = False) -> int:
     """Clear cache data. Returns bytes freed.
 
-    Args:
-        name: Specific item to clear. None = clear everything.
-              Valid: 'stations', or a model name (got5.5, got5.6, eot20, fes2022, hamtide11)
+    Removes exactly the items plan_clear(name, include_all) lists. By default
+    (name None) manually downloaded / large models (EOT20, FES2022,
+    HAMTIDE11) are never touched; pass include_all or name them explicitly.
     """
-    if name is None:
-        # Clear everything
-        app_dir = get_cache_dir()
-        pytmd_dir = _get_pytmd_data_dir()
-        freed = _dir_size(app_dir)
-        for dirname in PYTMD_MODEL_DIRS.values():
-            freed += _dir_size(pytmd_dir / dirname)
-        shutil.rmtree(app_dir, ignore_errors=True)
-        for dirname in PYTMD_MODEL_DIRS.values():
-            model_path = pytmd_dir / dirname
-            if model_path.exists():
-                shutil.rmtree(model_path)
-        return freed
-
-    name_upper = name.upper()
-
-    if name_upper == "STATIONS":
-        stations_dir = get_cache_dir() / "stations"
-        noaa_path = get_station_cache_path()
-        freed = _dir_size(stations_dir)
-        if noaa_path.exists():
-            freed += noaa_path.stat().st_size
-            noaa_path.unlink()
-        if stations_dir.exists():
-            shutil.rmtree(stations_dir)
-        return freed
-
-    if name_upper in PYTMD_MODEL_DIRS:
-        dirname = PYTMD_MODEL_DIRS[name_upper]
-        model_path = _get_pytmd_data_dir() / dirname
-        freed = _dir_size(model_path)
-        if model_path.exists():
-            shutil.rmtree(model_path)
-        return freed
-
-    valid = ["stations"] + [n.lower() for n in PYTMD_MODEL_DIRS]
-    raise ValueError(f"Unknown cache name '{name}'. Valid names: {', '.join(valid)}")
+    freed = 0
+    for item in plan_clear(name, include_all):
+        path = Path(item["path"])
+        if path.is_dir():
+            shutil.rmtree(path)
+        else:
+            path.unlink()
+        freed += item["size"]
+    return freed

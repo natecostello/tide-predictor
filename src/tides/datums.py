@@ -219,9 +219,14 @@ def _write_cache_entry(cache_file: Path, key: str, datums: dict[str, float]) -> 
     """Merge one entry into a cache file. Non-finite values are never cached."""
     if not _all_finite(datums):
         return
+    from tides.cache import atomic_write_text
+
+    # Re-read just before writing so concurrent runs keep each other's keys.
+    # A small race remains between this read and the atomic replace (no lock);
+    # the worst case is one recomputation, never a corrupt file.
     cache = _read_cache(cache_file)
     cache[key] = datums
-    cache_file.write_text(json.dumps(cache, indent=2))
+    atomic_write_text(cache_file, json.dumps(cache, indent=2))
 
 
 def get_model_datums(

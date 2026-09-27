@@ -16,7 +16,7 @@ A stateless CLI for tide predictions using NOAA station data and global tidal mo
 ```
 tides get <lat,lon> [--date DATE] [--local] [--feet] [--json] [--between HH:MM:HH:MM] [--precision N] [--source auto|noaa|station|model] [--model got5.6|eot20|fes2022] [--datum mllw|mlw|msl|mtl|mhw|mhhw|lat|hat] [--verbose]
 tides cache [--json]
-tides cache clear [name] [--yes]
+tides cache clear [stations|datums|got5.5|got5.6|eot20|fes2022|hamtide11] [--all|-a] [--yes]
 tides fetch-model
 tides --version
 ```

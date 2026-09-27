@@ -521,24 +521,48 @@ def cache_show(
 def cache_clear(
     name: Optional[str] = typer.Argument(
         None,
-        help="Item to clear: stations, got5.5, got5.6, eot20, fes2022, hamtide11",
+        help=(
+            "Item to clear: stations, datums, got5.5, got5.6, eot20, fes2022, hamtide11. "
+            "Omit to clear the app cache and auto-downloaded models (GOT5.5/GOT5.6)."
+        ),
+    ),
+    all_models: bool = typer.Option(
+        False,
+        "--all",
+        "-a",
+        help="With no name, also clear EOT20 and manually downloaded models (FES2022, HAMTIDE11)",
     ),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt"),
 ) -> None:
-    """Clear cached data. Omit name to clear everything."""
-    from tides.cache import clear_cache, format_size
+    """Clear cached data.
 
-    target = "all cached data" if name is None else f"'{name}' cache"
+    Without a name, removes the app cache (station lists, station database,
+    datums) and GOT5.5/GOT5.6, which re-download automatically. EOT20, FES2022
+    and HAMTIDE11 are only removed when named or with --all.
+    """
+    from tides.cache import clear_cache, format_size, plan_clear
+
+    try:
+        items = plan_clear(name, include_all=all_models)
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        raise SystemExit(1)
+
+    target = "cached data" if name is None else f"'{name}' cache"
+    if not items:
+        print(f"Nothing to clear ({target} is empty).")
+        raise typer.Exit(code=0)
+
+    print("Will remove:")
+    for item in items:
+        print(f"  {item['name']:<20} {format_size(item['size']):>10}  {item['path']}")
 
     if not yes and not typer.confirm(f"Clear {target}?", default=False):
         print("Cancelled.")
         raise typer.Exit(code=0)
 
     try:
-        freed = clear_cache(name)
-    except ValueError as e:
-        print(f"Error: {e}", file=sys.stderr)
-        raise SystemExit(1)
+        freed = clear_cache(name, include_all=all_models)
     except OSError as e:
         print(f"Error clearing {target}: {e}", file=sys.stderr)
         raise SystemExit(2)

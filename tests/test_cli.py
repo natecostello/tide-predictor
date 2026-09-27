@@ -592,37 +592,71 @@ class TestCacheShowCommand:
 
 
 class TestCacheClearCommand:
+    ITEMS = [{"name": "GOT5.6", "path": "/fake/pytmd/GOT5.6", "size": 5000}]
+
+    @patch("tides.cache.plan_clear", return_value=ITEMS)
     @patch("tides.cache.clear_cache")
-    def test_clear_with_yes_flag(self, mock_clear):
+    def test_clear_with_yes_flag(self, mock_clear, _plan):
         mock_clear.return_value = 5000
         result = runner.invoke(app, ["cache", "clear", "got5.6", "--yes"])
         assert result.exit_code == 0
         assert "Cleared" in result.output
-        mock_clear.assert_called_once_with("got5.6")
+        mock_clear.assert_called_once_with("got5.6", include_all=False)
 
+    @patch("tides.cache.plan_clear", return_value=ITEMS)
     @patch("tides.cache.clear_cache")
-    def test_clear_all_with_yes(self, mock_clear):
+    def test_clear_all_with_yes(self, mock_clear, mock_plan):
         mock_clear.return_value = 10_000_000
         result = runner.invoke(app, ["cache", "clear", "--yes"])
         assert result.exit_code == 0
-        assert "all cached data" in result.output
+        assert "Cleared cached data" in result.output
+        mock_plan.assert_called_once_with(None, include_all=False)
 
+    @patch("tides.cache.plan_clear", return_value=ITEMS)
     @patch("tides.cache.clear_cache")
-    def test_clear_invalid_name(self, mock_clear):
-        mock_clear.side_effect = ValueError("Unknown cache name 'bogus'")
+    def test_all_flag_passed_through(self, mock_clear, mock_plan):
+        mock_clear.return_value = 1
+        result = runner.invoke(app, ["cache", "clear", "--all", "--yes"])
+        assert result.exit_code == 0
+        mock_plan.assert_called_once_with(None, include_all=True)
+        mock_clear.assert_called_once_with(None, include_all=True)
+
+    @patch("tides.cache.plan_clear", return_value=ITEMS)
+    @patch("tides.cache.clear_cache")
+    def test_prompt_lists_items(self, mock_clear, _plan):
+        result = runner.invoke(app, ["cache", "clear"], input="n\n")
+        assert "Will remove:" in result.output
+        assert "/fake/pytmd/GOT5.6" in result.output
+        mock_clear.assert_not_called()
+
+    @patch("tides.cache.plan_clear")
+    @patch("tides.cache.clear_cache")
+    def test_clear_invalid_name(self, mock_clear, mock_plan):
+        mock_plan.side_effect = ValueError("Unknown cache name 'bogus'")
         result = runner.invoke(app, ["cache", "clear", "bogus", "--yes"])
         assert result.exit_code == 1
         assert "Unknown cache name" in result.output
+        mock_clear.assert_not_called()
 
+    @patch("tides.cache.plan_clear", return_value=ITEMS)
     @patch("tides.cache.clear_cache")
-    def test_clear_cancelled(self, mock_clear):
+    def test_clear_cancelled(self, mock_clear, _plan):
         result = runner.invoke(app, ["cache", "clear", "got5.6"], input="n\n")
         assert result.exit_code == 0
         assert "Cancelled" in result.output
         mock_clear.assert_not_called()
 
+    @patch("tides.cache.plan_clear", return_value=[])
     @patch("tides.cache.clear_cache")
-    def test_clear_os_error(self, mock_clear):
+    def test_nothing_to_clear(self, mock_clear, _plan):
+        result = runner.invoke(app, ["cache", "clear", "datums"])
+        assert result.exit_code == 0
+        assert "Nothing to clear" in result.output
+        mock_clear.assert_not_called()
+
+    @patch("tides.cache.plan_clear", return_value=ITEMS)
+    @patch("tides.cache.clear_cache")
+    def test_clear_os_error(self, mock_clear, _plan):
         mock_clear.side_effect = OSError("Permission denied")
         result = runner.invoke(app, ["cache", "clear", "got5.6", "--yes"])
         assert result.exit_code == 2

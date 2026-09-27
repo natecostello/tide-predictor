@@ -13,20 +13,24 @@ New Typer sub-app at `tides cache` with two commands:
 
 **`tides cache`** (default action, implemented as callback):
 - Lists both cache locations with sizes:
-  - App cache (`~/.cache/tides/`): station index, NOAA stations, station database
+  - App cache (`~/.cache/tides/`): station index, NOAA stations, station database, datum cache (added #17)
   - Model cache (`~/Library/Caches/pytmd/` via platformdirs): GOT5.5, GOT5.6, EOT20, FES2022, HAMTIDE11
 - Shows per-model directory sizes
 - `--json` flag for machine-readable output
 
 **`tides cache clear [name]`**:
-- No argument: clears everything (both caches), with confirmation prompt
-- `name` argument: clears specific item (`stations`, `got5.5`, `got5.6`, `eot20`, `fes2022`, `hamtide11`)
+- No argument: clears the app cache plus the auto-downloaded GOT5.5/GOT5.6 only (originally "everything, both caches" -- changed by #17, see amendment below), with a confirmation prompt listing each item
+- `name` argument: clears specific item (`stations`, `datums`, `got5.5`, `got5.6`, `eot20`, `fes2022`, `hamtide11`)
+- `--all`/`-a`: with no name, also clears EOT20, FES2022 and HAMTIDE11
 - `--yes` flag to skip confirmation
 - Reports bytes freed
 
+> **Amended 2026-09-27 (#17):** with no argument, `cache clear` now removes only the app cache plus the auto-downloaded GOT5.5/GOT5.6; EOT20 and the manually downloaded FES2022/HAMTIDE11 (in pyTMD's shared cache, which other tools may use) are removed only when named or with the new `--all` flag. `datums` is a new name. The confirmation prompt lists every item (name, size, path) before deleting, and removal errors are reported (exit 2) instead of ignored.
+
 ### Files Changed
 - `src/tides/cli.py` — add `cache_app` Typer sub-app
-- `src/tides/cache.py` — add `get_cache_info()`, `clear_cache()`, `format_size()` functions
+- `src/tides/cache.py` — add `get_cache_info()`, `clear_cache()`, `plan_clear()` (#17), `format_size()`, `atomic_write_text()` (#17) functions
+- `src/tides/datums.py`, `src/tides/stations.py` — write cache/index files via `atomic_write_text()` (#17)
 
 ## 2. Replace Hand-Rolled Harmonics with pyTMD
 

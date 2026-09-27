@@ -55,6 +55,10 @@ tides cache
 
 # Clear specific model cache
 tides cache clear eot20 --yes
+
+# Clear app cache + auto-downloaded GOT models (lists items and asks first).
+# EOT20 / FES2022 / HAMTIDE11 are kept unless named or --all is given
+tides cache clear
 ```
 
 ### Coordinate format
