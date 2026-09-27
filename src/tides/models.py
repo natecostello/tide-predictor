@@ -28,6 +28,7 @@ class Coordinate:
 class TideEvent:
     time: datetime.datetime
     height: float  # meters
+    kind: str  # "high" or "low"
 
     @property
     def height_ft(self) -> float:

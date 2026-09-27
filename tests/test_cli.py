@@ -172,10 +172,12 @@ class TestFormatPlain:
             TideEvent(
                 time=datetime.datetime(2026, 4, 15, 14, 32, tzinfo=datetime.timezone.utc),
                 height=0.3,
+                kind="high",
             ),
             TideEvent(
                 time=datetime.datetime(2026, 4, 15, 20, 45, tzinfo=datetime.timezone.utc),
                 height=-0.1,
+                kind="low",
             ),
         ]
         return TideResult(
@@ -207,7 +209,7 @@ class TestFormatPlain:
         output = format_plain(
             result, feet=False, precision=1, local=False, between=None, verbose=True
         )
-        assert output.startswith("[NOAA: The Battery, 1.2km]")
+        assert output.startswith("[NOAA: The Battery, 1.2km, MSL]")
 
     def test_precision(self):
         result = self._make_result()
@@ -221,12 +223,14 @@ class TestFormatPlain:
             TideEvent(
                 time=datetime.datetime(2026, 4, 15, 14, 32, tzinfo=datetime.timezone.utc),
                 height=0.3,
+                kind="high",
             ),
         ]
         events2 = [
             TideEvent(
                 time=datetime.datetime(2026, 4, 16, 15, 0, tzinfo=datetime.timezone.utc),
                 height=0.5,
+                kind="high",
             ),
         ]
         result = TideResult(
@@ -254,6 +258,7 @@ class TestFormatJson:
             TideEvent(
                 time=datetime.datetime(2026, 4, 15, 14, 32, tzinfo=datetime.timezone.utc),
                 height=0.3,
+                kind="high",
             ),
         ]
         return TideResult(
@@ -342,14 +347,17 @@ class TestFormatPlainBetweenFilter:
             TideEvent(
                 time=datetime.datetime(2026, 4, 15, 6, 0, tzinfo=datetime.timezone.utc),
                 height=0.5,
+                kind="high",
             ),
             TideEvent(
                 time=datetime.datetime(2026, 4, 15, 14, 0, tzinfo=datetime.timezone.utc),
                 height=1.2,
+                kind="high",
             ),
             TideEvent(
                 time=datetime.datetime(2026, 4, 15, 22, 0, tzinfo=datetime.timezone.utc),
                 height=-0.3,
+                kind="low",
             ),
         ]
         return TideResult(
@@ -388,9 +396,15 @@ class TestFormatJsonBetweenFilter:
         the daytime one, in the JSON formatter too (#29 review)."""
         utc = datetime.timezone.utc
         events = [
-            TideEvent(time=datetime.datetime(2026, 4, 15, 1, 30, tzinfo=utc), height=0.5),
-            TideEvent(time=datetime.datetime(2026, 4, 15, 12, 0, tzinfo=utc), height=1.2),
-            TideEvent(time=datetime.datetime(2026, 4, 15, 22, 15, tzinfo=utc), height=-0.3),
+            TideEvent(
+                time=datetime.datetime(2026, 4, 15, 1, 30, tzinfo=utc), height=0.5, kind="high"
+            ),
+            TideEvent(
+                time=datetime.datetime(2026, 4, 15, 12, 0, tzinfo=utc), height=1.2, kind="high"
+            ),
+            TideEvent(
+                time=datetime.datetime(2026, 4, 15, 22, 15, tzinfo=utc), height=-0.3, kind="low"
+            ),
         ]
         result = TideResult(
             coordinate=Coordinate(lat=40.7128, lon=-74.0060),
@@ -412,14 +426,17 @@ class TestFormatJsonBetweenFilter:
             TideEvent(
                 time=datetime.datetime(2026, 4, 15, 6, 0, tzinfo=datetime.timezone.utc),
                 height=0.5,
+                kind="high",
             ),
             TideEvent(
                 time=datetime.datetime(2026, 4, 15, 14, 0, tzinfo=datetime.timezone.utc),
                 height=1.2,
+                kind="high",
             ),
             TideEvent(
                 time=datetime.datetime(2026, 4, 15, 22, 0, tzinfo=datetime.timezone.utc),
                 height=-0.3,
+                kind="low",
             ),
         ]
         result = TideResult(
@@ -447,6 +464,7 @@ class TestFormatPlainLocal:
             TideEvent(
                 time=datetime.datetime(2026, 4, 15, 18, 0, tzinfo=datetime.timezone.utc),
                 height=0.5,
+                kind="high",
             ),
         ]
         result = TideResult(

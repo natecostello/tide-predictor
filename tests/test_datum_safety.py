@@ -66,6 +66,7 @@ def _result(source: Source, height: float = 0.5, station_id: str | None = "st1")
                     TideEvent(
                         time=datetime.datetime(2026, 9, 28, 3, tzinfo=datetime.timezone.utc),
                         height=height,
+                        kind="high" if height >= 0 else "low",
                     )
                 ],
             )

@@ -118,7 +118,7 @@ Tides are listed in chronological order (midnight to midnight).
 
 With `--verbose`:
 ```
-[NOAA: Oregon Inlet, 3.2km] 0.3m@14:32, -0.1m@20:45
+[NOAA: Oregon Inlet, 3.2km, MLLW] 0.3m@14:32, -0.1m@20:45
 ```
 
 ### JSON
@@ -131,19 +131,22 @@ With `--verbose`:
     "station": {"id": "8518750", "name": "The Battery", "distance_km": 1.2}
   },
   "model": null,
+  "datum": "MLLW",
   "timezone": "UTC",
   "unit": "m",
   "days": [
     {
       "date": "2026-04-15",
       "tides": [
-        {"time": "14:32", "height": 0.3},
-        {"time": "20:45", "height": -0.1}
+        {"time": "14:32", "height": 0.3, "datetime": "2026-04-15T14:32+00:00", "type": "high"},
+        {"time": "20:45", "height": -0.1, "datetime": "2026-04-15T20:45+00:00", "type": "low"}
       ]
     }
   ]
 }
 ```
+
+> **Amended 2026-09-27 (#19):** each event also carries `datetime` (ISO 8601 with UTC offset, on the displayed clock) and `type` (`"high"`/`"low"`); existing keys are unchanged. Every requested day is present, with `"tides": []` when `--between` filtered out all its events. `--verbose` prefixes include the datum. Plain output with no matching events prints nothing on stdout and a note on stderr (exit 0). Rounded heights never print as `-0.0`.
 
 When source is `model`:
 ```json

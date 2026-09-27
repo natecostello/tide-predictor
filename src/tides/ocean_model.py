@@ -41,9 +41,9 @@ def find_extrema(
 
     events = []
     for i in highs:
-        events.append(TideEvent(time=times[i], height=float(elevations[i])))
+        events.append(TideEvent(time=times[i], height=float(elevations[i]), kind="high"))
     for i in lows:
-        events.append(TideEvent(time=times[i], height=float(elevations[i])))
+        events.append(TideEvent(time=times[i], height=float(elevations[i]), kind="low"))
 
     events.sort(key=lambda e: e.time)
     return events
