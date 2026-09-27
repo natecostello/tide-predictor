@@ -46,7 +46,7 @@ Controlled by `--source` flag:
 
 **Distance threshold:** 10-25km (configurable internally, not user-facing). Start with 25km as default.
 
-> **Amended 2026-09-27 (#12):** `auto` now tries NOAA, then the global station database, then the model. A NOAA station that cannot serve the requested `--datum` (subordinate stations publish MLLW only), or a NOAA API/network failure, falls through to the next source with a stderr note instead of failing. `--source noaa` still reports the error (exit 2).
+> **Amended 2026-09-27 (#12):** `auto` now tries NOAA, then the global station database, then the model. A NOAA station that cannot serve the requested `--datum` (subordinate stations publish MLLW only), or a NOAA API/network failure while fetching predictions or station datums, falls through to the next source with a stderr note instead of failing. `--source noaa` still reports the error (exit 2).
 
 ### NOAA CO-OPS API
 

@@ -302,8 +302,10 @@ def resolve_tides(
 
     # AUTO: try NOAA API first (most accurate for US), then global station
     # database (harmonic prediction), then model fallback. A NOAA station that
-    # cannot serve the requested datum, or a NOAA API/network failure, falls
-    # through to the next source instead of failing the whole request.
+    # cannot serve the requested datum, or a NOAA API/network failure while
+    # fetching predictions or station datums, falls through to the next source
+    # instead of failing the whole request. (Station-list fetch failures are
+    # handled separately, see #16.)
     stations = get_stations()
     try:
         noaa_result = _resolve_noaa(coord, begin_date, end_date, stations, datum)
