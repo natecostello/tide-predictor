@@ -193,27 +193,6 @@ class TestComputeTides:
     @patch("pyTMD.predict.time_series")
     @patch("pyTMD.io.model")
     @patch("tides.cache.ensure_model_data")
-    def test_compute_tides_crops_dataset(
-        self, mock_ensure, mock_model_cls, mock_predict, mock_infer
-    ):
-        """open_dataset must use crop=True with bounds in 0-360 lon space."""
-        self._setup_pytmd_mocks(mock_ensure, mock_model_cls, mock_predict, mock_infer)
-        coord = Coordinate(lat=40.7, lon=-74.0)
-        compute_tides(coord, datetime.date(2025, 12, 3), datetime.date(2025, 12, 3))
-        mock_instance = mock_model_cls.return_value
-        _, kwargs = mock_instance.open_dataset.call_args
-        assert kwargs.get("crop") is True
-        bounds = kwargs.get("bounds")
-        assert bounds is not None
-        # Bounds in 0-360 space should contain coord.lon % 360
-        lon360 = coord.lon % 360
-        assert bounds[0] < lon360 < bounds[1]
-        assert bounds[2] < coord.lat < bounds[3]
-
-    @patch("pyTMD.predict.infer_minor")
-    @patch("pyTMD.predict.time_series")
-    @patch("pyTMD.io.model")
-    @patch("tides.cache.ensure_model_data")
     def test_compute_tides_accepts_model_name(
         self, mock_ensure, mock_model_cls, mock_predict, mock_infer
     ):
@@ -257,24 +236,20 @@ class TestComputeTides:
     @patch("pyTMD.predict.time_series")
     @patch("pyTMD.io.model")
     @patch("tides.cache.ensure_model_data")
-    def test_compute_tides_seam_crops_with_signed_bounds(
+    def test_got_format_loads_full_grid_and_uses_lon360(
         self, mock_ensure, mock_model_cls, mock_predict, mock_infer
     ):
-        """Windows crossing the 0/360 seam must still crop (never load the full
-        grid): GOT-format crops use a west bound < 0, which pyTMD wraps."""
+        """pyTMD 3.0.6's GOT reader ignores crop/bounds, so GOT grids are loaded
+        whole and interpolated at the non-negative lon360 -- never at a signed
+        longitude outside the grid's [0, 360) range (#23 review)."""
         self._setup_pytmd_mocks(mock_ensure, mock_model_cls, mock_predict, mock_infer)
         mock_model_cls.return_value.format = "GOT-netcdf"
-        for lon, expected_x in [(0.5, 0.5), (-0.5, -0.5)]:
-            compute_tides(
-                Coordinate(lat=0.0, lon=lon),
-                datetime.date(2025, 12, 3),
-                datetime.date(2025, 12, 3),
-            )
+        for lon, expected_x in [(0.5, 0.5), (-0.5, 359.5), (-74.0, 286.0)]:
+            day = datetime.date(2025, 12, 3)
+            compute_tides(Coordinate(lat=0.0, lon=lon), day, day)
             mock_instance = mock_model_cls.return_value
             _, kwargs = mock_instance.open_dataset.call_args
-            assert kwargs.get("crop") is True
-            assert kwargs["bounds"][0] == pytest.approx(expected_x - 2.0)
-            assert kwargs["bounds"][1] == pytest.approx(expected_x + 2.0)
+            assert kwargs.get("crop") is False
             _, ikw = mock_instance.open_dataset.return_value.tmd.interp.call_args
             assert ikw["x"] == pytest.approx(expected_x)
 
@@ -317,18 +292,21 @@ class TestSeam:
     def test_crosses_seam(self, lon360, expected):
         assert crosses_seam(lon360) is expected
 
-    def test_fes_seam_concat_is_strictly_increasing(self):
-        """FES-format grids include both x=0 and x=360; the seam crop must not
-        duplicate x=0 after shifting the western slice by -360."""
+    def test_fes_seam_crop_matches_full_grid(self):
+        """FES-format grids include both x=0 and x=360. The seam crop must pick
+        the right cells (west slice shifted by -360, no duplicate x=0) and give
+        the same interpolated value as the full grid at 0.1 and 359.9."""
         import xarray as xr
 
         from tides import ocean_model
 
         x = np.arange(0.0, 360.0 + 0.125, 0.125)
         y = np.arange(40.0, 60.0 + 0.125, 0.125)
+        # Longitude- and latitude-dependent, smooth and periodic in x.
+        field = np.cos(np.radians(x))[None, :] * 2.0 + np.sin(np.radians(x))[None, :]
+        field = field + 0.01 * y[:, None]
         grid = xr.Dataset(
-            {"m2": (("y", "x"), np.ones((len(y), len(x)), dtype=np.complex64))},
-            coords={"x": x, "y": y},
+            {"m2": (("y", "x"), field.astype(np.complex64))}, coords={"x": x, "y": y}
         )
         captured = {}
 
@@ -344,16 +322,30 @@ class TestSeam:
         mock_model = MagicMock()
         mock_model.format = "FES-netcdf"
         mock_model.open_dataset.return_value = grid
-        with (
-            patch("tides.cache.ensure_model_data"),
-            patch("pyTMD.io.model", return_value=mock_model),
-            patch.object(
-                xr.Dataset, "tmd", property(lambda self: FakeAccessor(self)), create=True
-            ),
-        ):
-            ocean_model.load_local_constituents(50.0, -0.1, "EOT20")
 
-        xs = captured["ds"].x.values
-        assert np.all(np.diff(xs) > 0)
-        assert xs.min() >= -2.0 and xs.max() <= 2.0
-        assert captured["kw"]["x"] == pytest.approx(-0.1)
+        def full_grid_value(lon360, lat):
+            return complex(grid.m2.interp(x=lon360, y=lat).values)
+
+        for lon, lon360 in [(0.1, 0.1), (-0.1, 359.9)]:
+            with (
+                patch("tides.cache.ensure_model_data"),
+                patch("pyTMD.io.model", return_value=mock_model),
+                patch.object(
+                    xr.Dataset, "tmd", property(lambda self: FakeAccessor(self)), create=True
+                ),
+            ):
+                ocean_model.load_local_constituents.cache_clear()
+                ocean_model.load_local_constituents(50.0, lon, "EOT20")
+
+            cropped = captured["ds"]
+            xs = cropped.x.values
+            assert np.all(np.diff(xs) > 0)
+            assert xs.min() >= -2.0 and xs.max() <= 2.0
+            # Every cell carries the value of the same longitude on the full grid.
+            expected = np.cos(np.radians(xs % 360)) * 2.0 + np.sin(np.radians(xs % 360))
+            got = cropped.m2.sel(y=50.0).values.real - 0.5
+            assert np.allclose(got, expected, atol=1e-5)
+            signed_x = captured["kw"]["x"]
+            assert signed_x == pytest.approx(lon)
+            seam_value = complex(cropped.m2.interp(x=signed_x, y=50.0).values)
+            assert abs(seam_value - full_grid_value(lon360, 50.0)) < 1e-5

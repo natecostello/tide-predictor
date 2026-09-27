@@ -1,10 +1,14 @@
 import datetime
 import functools
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 from scipy.signal import find_peaks
 
 from tides.models import Coordinate, TideEvent
+
+if TYPE_CHECKING:
+    import xarray as xr
 
 DEFAULT_MODEL = "GOT5.6"
 SUPPORTED_MODELS = {"GOT5.6", "GOT5.5", "EOT20", "FES2022"}
@@ -71,15 +75,19 @@ def utc_minutes(start: datetime.datetime, end: datetime.datetime, step_minutes: 
 
 
 @functools.lru_cache(maxsize=8)
-def load_local_constituents(lat: float, lon: float, model_name: str = DEFAULT_MODEL):
+def load_local_constituents(
+    lat: float, lon: float, model_name: str = DEFAULT_MODEL
+) -> tuple["xr.Dataset", Any]:
     """Load a model and interpolate its constituents at (lat, lon).
 
     Cached per process: a single `tides get` that also computes model datums
     reuses the interpolated constituents instead of reloading the model.
     Callers must treat the returned objects as read-only.
 
-    Crops the grid to a +/-MODEL_CROP_PAD_DEG window, including windows that
-    cross the 0/360 seam, so the full global grid is never loaded.
+    FES-format grids (FES2022, EOT20) are cropped to a +/-MODEL_CROP_PAD_DEG
+    window, including windows that cross the 0/360 seam, so their full global
+    grids are never loaded. GOT-format grids are always loaded whole: pyTMD
+    3.0.6's GOT reader ignores crop/bounds (they are small, ~100 MB).
 
     Returns (local_dataset, model) where `model` carries `corrections` and
     `minor` for pyTMD.predict.
@@ -99,10 +107,10 @@ def load_local_constituents(lat: float, lon: float, model_name: str = DEFAULT_MO
     lat_max = min(lat + pad, 90.0)
     lon360 = lon % 360
     seam = crosses_seam(lon360, pad)
-    # Across the seam, work in a signed longitude so the window is contiguous.
-    x = lon360 - 360 if seam and lon360 > 360 - pad else lon360
 
     if m.format in _FES_FORMATS:
+        # Across the seam, work in a signed longitude so the window is contiguous.
+        x = lon360 - 360 if seam and lon360 > 360 - pad else lon360
         # FES-format grids (FES2022, EOT20): dask lazy loading + manual crop to
         # avoid loading every constituent grid (~5 GB for FES2022) into memory.
         ds = m.open_dataset(chunks={})
@@ -118,14 +126,17 @@ def load_local_constituents(lat: float, lon: float, model_name: str = DEFAULT_MO
             ds = ds.sel(x=slice(x - pad, x + pad), y=slice(lat_min, lat_max))
         ds = ds.compute()
     else:
-        # GOT-format grids: pyTMD's crop wraps the seam when the west bound < 0.
-        ds = m.open_dataset(crop=True, bounds=[x - pad, x + pad, lat_min, lat_max])
+        # GOT-format grids: pyTMD 3.0.6 ignores crop/bounds and returns the full
+        # 0-360 grid, so always interpolate at the non-negative lon360 (never a
+        # signed longitude outside the grid's range).
+        x = lon360
+        ds = m.open_dataset(crop=False)
 
     local = ds.tmd.interp(x=x, y=lat, extrapolate=True, cutoff=10)
     return local, m
 
 
-def predict_elevations(t: np.ndarray, local, model) -> np.ndarray:
+def predict_elevations(t: np.ndarray, local: "xr.Dataset", model: Any) -> np.ndarray:
     """Predict elevations (major + inferred minor constituents) at times `t`."""
     import pyTMD.predict
 

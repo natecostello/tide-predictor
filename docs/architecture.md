@@ -75,7 +75,7 @@ Key details:
 Wraps pyTMD to load global models (GOT5.6, EOT20, FES2022) and predict tides at arbitrary coordinates. The prediction pipeline:
 
 1. Load model with `pyTMD.io.model().from_database(name)`
-2. Crop to a 4-degree bounding box around the target (saves memory). All models use 0-360 longitude grids; windows that cross the 0/360 seam (near Greenwich) are still cropped: GOT-format grids via a signed west bound (pyTMD wraps it), FES-format grids (FES2022, EOT20) by concatenating the two edge slices. The full global grid is never loaded
+2. For FES-format grids (FES2022, EOT20), crop to a 4-degree bounding box around the target (saves memory), including windows that cross the 0/360 seam near Greenwich (the two edge slices are concatenated in a signed longitude). All models use 0-360 longitude grids. GOT-format grids are loaded whole (pyTMD 3.0.6's GOT reader ignores crop/bounds; ~100 MB) and always interpolated at the non-negative longitude
 3. Interpolate constituents to the exact coordinate with `ds.tmd.interp()`
 4. Predict with `pyTMD.predict.time_series()` + `infer_minor()`
 5. Find high/low extrema with `scipy.signal.find_peaks()`
@@ -135,10 +135,10 @@ Wraps `timezonefinder` to map coordinates to IANA timezone names, used by `--loc
 │   ├── noaa/*.json                      3,451 NOAA stations
 │   ├── ticon/*.json                     4,838 TICON stations
 │   └── station_index.json               Searchable index
-└── datums/                              Computed datum offsets
-    ├── got5.6.json                      Cached per model, per grid point
-    ├── fes2022.json
-    └── eot20.json
+└── datums/                              Computed datum offsets (versioned; older files unused)
+    ├── got5.6.v2.json                   Cached per model, per point
+    ├── fes2022.v2.json
+    └── eot20.v2.json
 
 ~/Library/Caches/pytmd/                  Model cache (platformdirs)
 ├── GOT5.5/                              694 MB (dependency of GOT5.6)
