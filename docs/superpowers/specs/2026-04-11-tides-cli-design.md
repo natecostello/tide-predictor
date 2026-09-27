@@ -28,7 +28,7 @@ Note: negative longitudes (e.g. `-74.0060`) may be interpreted as flags by the s
 
 ### Date
 
-- Default: today (UTC date at time of invocation)
+- Default: today (UTC date at time of invocation; with `--local`, today's date in the coordinate's timezone -- amended 2026-09-27, #10)
 - Single date: `--date 2026-04-15` (ISO 8601)
 - Date range: `--date 2026-04-15:2026-04-17` (inclusive)
 
@@ -104,6 +104,8 @@ Multi-day (date range):
 ```
 
 Times are UTC by default. With `--local`, times are in the local timezone at the coordinates, with no timezone suffix.
+
+> **Amended 2026-09-27 (#10):** with `--local`, days are also grouped on the local clock: `--date` bounds refer to local dates and each day lists the events that fall on that local date (previously events were grouped by UTC date, misfiling evening tides at negative offsets).
 
 Tides are listed in chronological order (midnight to midnight).
 

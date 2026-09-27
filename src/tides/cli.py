@@ -94,9 +94,20 @@ def parse_coordinate(args: list[str]) -> Coordinate:
     raise SystemExit(1)
 
 
-def parse_date_arg(date_str: str | None) -> tuple[datetime.date, datetime.date]:
+def parse_date_arg(
+    date_str: str | None,
+    coord: Coordinate | None = None,
+    local: bool = False,
+) -> tuple[datetime.date, datetime.date]:
     if date_str is None:
-        today = datetime.datetime.now(tz=datetime.timezone.utc).date()
+        # "Today" follows the display clock: local date at the coordinate with
+        # --local, UTC otherwise.
+        tz: datetime.tzinfo = datetime.timezone.utc
+        if local and coord is not None:
+            from tides.timezone import get_zoneinfo
+
+            tz = get_zoneinfo(coord)
+        today = datetime.datetime.now(tz=tz).date()
         return today, today
 
     if ":" in date_str:
@@ -320,7 +331,7 @@ def get(
 ) -> None:
     """Get tide predictions for a coastal coordinate."""
     coord = parse_coordinate([coordinate])
-    begin_date, end_date = parse_date_arg(date)
+    begin_date, end_date = parse_date_arg(date, coord, local)
     between_times = parse_between(between)
 
     if precision < 0:
@@ -357,6 +368,10 @@ def get(
     from tides.datums import DatumUnavailableError
     from tides.noaa import NOAAError
     from tides.resolver import resolve_tides
+    from tides.timezone import get_zoneinfo
+
+    # Day grouping must use the same clock as the displayed times.
+    display_tz = get_zoneinfo(coord) if local else None
 
     try:
         result = resolve_tides(
@@ -366,6 +381,7 @@ def get(
             source_enum,
             model_name=model_name,
             datum=datum_lower,
+            tz=display_tz,
         )
     except SystemExit:
         raise

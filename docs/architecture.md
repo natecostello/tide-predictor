@@ -110,6 +110,10 @@ Manages two cache locations:
 
 `tides cache` shows both with sizes. `tides cache clear [name]` deletes selectively.
 
+### Day grouping and `--local`
+
+Events are grouped into days on the displayed clock. Without `--local` that is UTC; with `--local` it is the coordinate's timezone (`timezone.get_zoneinfo`: open-ocean points get their nautical `Etc/GMT` zone; UTC only if no zone is returned), and the underlying NOAA fetch / station / model prediction is widened by one UTC day on each side, then trimmed back to the requested local dates. Station and model predictions run as one continuous series padded by 3 h (`ocean_model.EDGE_PAD`), so extrema at day or range boundaries (e.g. exactly 00:00 UTC) are not lost.
+
 ### timezone.py — Local time conversion
 
 Wraps `timezonefinder` to map coordinates to IANA timezone names, used by `--local` flag. Singleton `TimezoneFinder` instance (lazy-initialized, ~20 MB memory).

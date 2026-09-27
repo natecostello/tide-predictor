@@ -55,6 +55,7 @@ Follow these principles in all CLI work:
 ### Arguments and Flags
 - Provide both short and long flag forms (e.g. `-d`/`--date`)
 - Defaults should be the right choice for most users (today's date, UTC, meters, auto source)
+- `--local` switches the whole date contract to the coordinate's clock: default "today", `--date` bounds and day grouping all use local dates (nautical `Etc/GMT` zones at sea; UTC only if no zone is known)
 - Use standard flag names where conventions exist
 - Make flags, args, and subcommands order-independent where possible
 
