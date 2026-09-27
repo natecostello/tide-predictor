@@ -253,7 +253,7 @@ def get_station_index() -> list[dict]:
     stations_dir = _get_stations_dir()
     rebuilt = build_station_index(stations_dir)
     if rebuilt:
-        index_path.write_text(json.dumps(rebuilt))
+        atomic_write_text(index_path, json.dumps(rebuilt))
         print(
             f"Station database: index rebuilt from {len(rebuilt)} cached station files.",
             file=sys.stderr,
