@@ -39,7 +39,7 @@ The core routing logic. `resolve_tides()` tries sources in order for `auto` mode
 3. **Gridded model** — always available (fallback)
 
 After getting a result, `_apply_datum()` converts heights from the source's native datum to the requested datum. This is the trickiest part of the codebase because each source uses a different native datum:
-- **NOAA**: heights relative to MTL (mean tide level)
+- **NOAA**: requested directly in the target datum (MLLW, MLW, MSL, MTL, MHW, MHHW). LAT/HAT are derived from MLLW predictions plus the station's published `datums.json`. NOAA heights are never shifted by model-derived datums. Subordinate ("S") stations publish MLLW only; in auto mode a station that cannot serve the datum, or a NOAA API/network failure while fetching predictions or station datums, falls through to the next source with a stderr note
 - **Station**: heights relative to chart datum (LAT or MLLW, varies per station)
 - **Model**: heights relative to MSL (mean sea level)
 
@@ -47,9 +47,10 @@ The conversion formula: `height_target = height_current - (target_offset - curre
 
 ### noaa.py — NOAA CO-OPS API client
 
-Two endpoints:
-- Station list (XML, cached 30 days): `api.tidesandcurrents.noaa.gov/mdapi/prod/webapi/stations.xml`
-- Predictions (JSON, not cached): `api.tidesandcurrents.noaa.gov/api/prod/datagetter`
+Three endpoints:
+- Station list (XML, cached 30 days): `api.tidesandcurrents.noaa.gov/mdapi/prod/webapi/stations.xml` (includes station `type`: R = reference, S = subordinate)
+- Predictions (JSON, not cached): `api.tidesandcurrents.noaa.gov/api/prod/datagetter`, requested in the user's datum
+- Station datums (JSON, not cached, LAT/HAT only): `api.tidesandcurrents.noaa.gov/mdapi/prod/webapi/stations/<id>/datums.json`
 
 NOAA predictions are the gold standard for US waters — they come from the agency's own harmonic analysis of decades of tide gauge data.
 

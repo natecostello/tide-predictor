@@ -9,6 +9,8 @@ Computes tidal datums (LAT, MLLW, MLW, MSL, MHW, MHHW, HAT) from either station 
 **Supported datums** (enum):
 `lat`, `mllw`, `mlw`, `msl`, `mtl`, `mhw`, `mhhw`, `hat`
 
+> **Amended 2026-09-27 (#12):** there is also a **NOAA path**. NOAA predictions are requested directly in the target datum (MLLW, MLW, MSL, MTL, MHW, MHHW); LAT/HAT are derived from MLLW predictions plus the station's published `datums.json` (`height_target = height_MLLW - (TARGET_stnd - MLLW_stnd)`). NOAA heights are never converted with model-derived datums.
+
 **Two datum resolution paths:**
 
 1. **Station path** — station files include a `datums` dict with offsets relative to STND. Convert: `height_datum = height_msl + (MSL - target_datum)` using the station's published values.
