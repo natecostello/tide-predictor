@@ -13,9 +13,14 @@ import numpy as np
 
 SUPPORTED_DATUMS = ("lat", "mllw", "mlw", "msl", "mtl", "mhw", "mhhw", "hat")
 
-# 19-year tidal epoch for datum computation (full nodal cycle)
+# 19-year tidal epoch for datum computation (full nodal cycle).
+# End is exclusive: 2003-01-01 .. 2021-12-31 inclusive = 6,940 days.
 _DATUM_EPOCH_START = datetime.date(2003, 1, 1)
-_DATUM_EPOCH_END = datetime.date(2021, 12, 31)
+_DATUM_EPOCH_END = datetime.date(2022, 1, 1)
+
+# On-disk cache version. Bump when computed values change so stale entries are
+# never reused (old files are left in place, unused).
+DATUM_CACHE_VERSION = 2
 
 
 class Datum(Enum):
@@ -52,6 +57,11 @@ def datums_from_station(station: dict) -> dict[str, float] | None:
     return result
 
 
+# Datum computation samples the 19-year epoch every 6 minutes (NOAA's
+# prediction interval), predicting one chunk per year to bound memory.
+DATUM_INTERVAL_MINUTES = 6.0
+
+
 def compute_datums_from_model(
     lat: float,
     lon: float,
@@ -59,105 +69,81 @@ def compute_datums_from_model(
 ) -> dict[str, float]:
     """Compute tidal datums from a 19-year model prediction.
 
-    Runs hourly predictions for 2003-2021 and extracts statistical datums.
+    Predicts at 6-minute intervals over 2003-01-01 to 2022-01-01 (end
+    exclusive, 6,940 days) and extracts statistical datums.
     All values are in meters relative to MSL.
     """
-    import pyTMD.io
-    import pyTMD.predict
+    from tides.ocean_model import load_local_constituents, predict_elevations
 
-    from tides.cache import ensure_model_data
+    local, m = load_local_constituents(lat, lon, model_name)
 
-    ensure_model_data(model_name)
+    epoch = datetime.date(1992, 1, 1)
+    start_days = (_DATUM_EPOCH_START - epoch).days
+    n_days = (_DATUM_EPOCH_END - _DATUM_EPOCH_START).days
+    t = start_days + np.arange(0, n_days * 1440, DATUM_INTERVAL_MINUTES) / 1440.0
 
-    m = pyTMD.io.model()
-    m.from_database(model_name)
+    chunks = np.array_split(t, max(1, n_days // 365))
+    elevations = np.concatenate([predict_elevations(c, local, m) for c in chunks])
 
-    # Load model (same logic as ocean_model.py)
-    pad = 2.0
-    lat_min = max(lat - pad, -90.0)
-    lat_max = min(lat + pad, 90.0)
-    lon360 = lon % 360
-    lon_min = lon360 - pad
-    lon_max = lon360 + pad
-    crosses_antimeridian = lon_min < 0 or lon_max > 360
-
-    if m.format in ("FES-ascii", "FES-netcdf", "FES-native"):
-        ds = m.open_dataset(chunks={})
-        if not crosses_antimeridian:
-            ds = ds.sel(
-                x=slice(lon_min, lon_max),
-                y=slice(lat_min, lat_max),
-            )
-        ds = ds.compute()
-    elif crosses_antimeridian:
-        ds = m.open_dataset(crop=False)
-    else:
-        bounds = [lon_min, lon_max, lat_min, lat_max]
-        ds = m.open_dataset(crop=True, bounds=bounds)
-
-    local = ds.tmd.interp(x=lon360, y=lat, extrapolate=True, cutoff=10)
-
-    # Generate hourly timestamps for the 19-year epoch
-    epoch = datetime.datetime(1992, 1, 1, tzinfo=datetime.timezone.utc)
-    start_dt = datetime.datetime(
-        _DATUM_EPOCH_START.year,
-        _DATUM_EPOCH_START.month,
-        _DATUM_EPOCH_START.day,
-        tzinfo=datetime.timezone.utc,
-    )
-    total_hours = int(19 * 365.25 * 24)
-    t = np.array(
-        [(start_dt - epoch).total_seconds() / 86400.0 + i / 24.0 for i in range(total_hours)]
-    )
-
-    tide = pyTMD.predict.time_series(t, local, corrections=m.corrections)
-    minor = pyTMD.predict.infer_minor(t, local, corrections=m.corrections, minor=m.minor)
-    elevations = (
-        np.atleast_1d(np.asarray(tide)).flatten() + np.atleast_1d(np.asarray(minor)).flatten()
-    )
-
-    return _extract_datums(elevations)
+    return _extract_datums(elevations, DATUM_INTERVAL_MINUTES)
 
 
-def _extract_datums(elevations: np.ndarray) -> dict[str, float]:
-    """Extract tidal datums from an hourly elevation time series.
+# Mean lunar (tidal) day in hours. MHHW/MLLW are the mean of the higher high
+# and lower low per tidal day, not per 24 h calendar day.
+TIDAL_DAY_HOURS = 24.8412
 
-    Expects elevations relative to MSL (mean ~0).
+# Minimum separation between successive highs (or lows): semidiurnal extrema
+# are ~12.4 h apart, so 2 h rejects noise without merging real extrema.
+_MIN_EXTREMA_SEPARATION_MINUTES = 120
+
+
+def _per_bin_extreme(values: np.ndarray, bins: np.ndarray, reducer: np.ufunc) -> np.ndarray:
+    """Reduce `values` within runs of equal (non-decreasing) `bins`."""
+    if len(values) == 0:
+        return values
+    _, starts = np.unique(bins, return_index=True)
+    return reducer.reduceat(values, starts)
+
+
+def _extract_datums(elevations: np.ndarray, interval_minutes: float = 6.0) -> dict[str, float]:
+    """Extract tidal datums from an evenly sampled elevation time series.
+
+    Expects elevations relative to MSL (mean ~0) sampled every
+    `interval_minutes`. Higher-high / lower-low are taken per tidal day
+    (24.8412 h). Fully vectorized: no per-day Python loop.
     """
     from scipy.signal import find_peaks
 
-    # Find all highs and lows
-    highs_idx, _ = find_peaks(elevations, distance=4)  # min 4h apart
-    lows_idx, _ = find_peaks(-elevations, distance=4)
+    elevations = np.asarray(elevations, dtype=float)
+    distance = max(1, int(round(_MIN_EXTREMA_SEPARATION_MINUTES / interval_minutes)))
+    highs_idx, _ = find_peaks(elevations, distance=distance)
+    lows_idx, _ = find_peaks(-elevations, distance=distance)
 
     highs = elevations[highs_idx]
     lows = elevations[lows_idx]
 
-    # Group by day to find higher-high and lower-low per day
-    hours_per_day = 24
-    num_days = len(elevations) // hours_per_day
-
-    higher_highs = []
-    lower_lows = []
-    for day in range(num_days):
-        start = day * hours_per_day
-        end = start + hours_per_day
-        day_highs = [elevations[i] for i in highs_idx if start <= i < end]
-        day_lows = [elevations[i] for i in lows_idx if start <= i < end]
-        if day_highs:
-            higher_highs.append(max(day_highs))
-        if day_lows:
-            lower_lows.append(min(day_lows))
+    # Tidal-day bins; drop the trailing partial tidal day so every bin
+    # contributes a full day's higher-high / lower-low.
+    samples_per_tidal_day = TIDAL_DAY_HOURS * 60.0 / interval_minutes
+    full_bins = int(len(elevations) // samples_per_tidal_day)
+    high_bins = np.floor(highs_idx / samples_per_tidal_day).astype(int)
+    low_bins = np.floor(lows_idx / samples_per_tidal_day).astype(int)
+    keep_h = high_bins < full_bins
+    keep_l = low_bins < full_bins
+    higher_highs = _per_bin_extreme(highs[keep_h], high_bins[keep_h], np.maximum)
+    lower_lows = _per_bin_extreme(lows[keep_l], low_bins[keep_l], np.minimum)
 
     mhw = float(np.mean(highs)) if len(highs) > 0 else 0.0
     mlw = float(np.mean(lows)) if len(lows) > 0 else 0.0
-    mhhw = float(np.mean(higher_highs)) if higher_highs else mhw
-    mllw = float(np.mean(lower_lows)) if lower_lows else mlw
+    mhhw = float(np.mean(higher_highs)) if len(higher_highs) > 0 else mhw
+    mllw = float(np.mean(lower_lows)) if len(lower_lows) > 0 else mlw
 
     return {
         "lat": float(np.min(elevations)),
         "mllw": mllw,
         "mlw": mlw,
+        # The prediction has no Z0 term, so its long-run mean is ~0 and MSL is
+        # the zero reference by definition (model event heights share it).
         "msl": 0.0,
         "mtl": (mhw + mlw) / 2,
         "mhw": mhw,
@@ -191,7 +177,7 @@ def get_model_datums(
 ) -> dict[str, float]:
     """Get tidal datums for a coordinate, using cache when available."""
     cache_dir = _get_datum_cache_dir()
-    cache_file = cache_dir / f"{model_name.lower()}.json"
+    cache_file = cache_dir / f"{model_name.lower()}.v{DATUM_CACHE_VERSION}.json"
 
     key = _grid_key(lat, lon, model_name)
 

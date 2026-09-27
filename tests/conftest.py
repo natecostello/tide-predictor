@@ -91,3 +91,12 @@ def _block_network(
 
     monkeypatch.setattr(socket.socket, "connect", guarded_connect)
     monkeypatch.setattr(socket.socket, "connect_ex", guarded_connect_ex)
+
+
+@pytest.fixture(autouse=True)
+def _clear_model_load_cache() -> None:
+    # load_local_constituents is lru_cached per process; tests patch pyTMD
+    # differently, so never let one test's (mocked) load leak into another.
+    from tides.ocean_model import load_local_constituents
+
+    load_local_constituents.cache_clear()

@@ -75,10 +75,12 @@ Key details:
 Wraps pyTMD to load global models (GOT5.6, EOT20, FES2022) and predict tides at arbitrary coordinates. The prediction pipeline:
 
 1. Load model with `pyTMD.io.model().from_database(name)`
-2. Crop to a 4-degree bounding box around the target (saves memory)
+2. For FES-format grids (FES2022, EOT20), crop to a 4-degree bounding box around the target (saves memory), including windows that cross the 0/360 seam near Greenwich (the two edge slices are concatenated in a signed longitude). All models use 0-360 longitude grids. GOT-format grids are loaded whole (pyTMD 3.0.6's GOT reader ignores crop/bounds; ~100 MB) and always interpolated at the non-negative longitude
 3. Interpolate constituents to the exact coordinate with `ds.tmd.interp()`
 4. Predict with `pyTMD.predict.time_series()` + `infer_minor()`
 5. Find high/low extrema with `scipy.signal.find_peaks()`
+
+Steps 1-3 live in `load_local_constituents()`, shared with `datums.py` and cached per process (so a query that also computes datums loads the model once).
 
 **FES2022 special handling**: 34 constituent files (~5 GB on disk, ~16 GB uncompressed). Uses dask lazy loading (`chunks={}`) + xarray `.sel().compute()` to load only the regional subset. Reduces peak memory from 5 GB to 27 MB.
 
@@ -90,13 +92,13 @@ Tidal datums (LAT, MLLW, MLW, MSL, MTL, MHW, MHHW, HAT) are statistical properti
 
 1. **Station-published datums**: Available in ticon station files (all 4,838 stations) and some NOAA stations (1,210 of 3,451). Read directly from the station JSON.
 
-2. **Model-computed datums**: Run a 19-year hourly prediction (2003–2021, 166K time steps) at the coordinate, then extract:
+2. **Model-computed datums**: Run a 19-year prediction at 6-minute intervals (2003-01-01 to 2022-01-01 exclusive, 6,940 days, ~1.67M samples, predicted one year per chunk) at the coordinate, then extract (vectorized, ~10 ms):
    - LAT/HAT: min/max of entire series
-   - MHHW/MLLW: mean of daily higher-highs / lower-lows
+   - MHHW/MLLW: mean of higher-highs / lower-lows per tidal day (24.8412 h), not per calendar day
    - MHW/MLW: mean of all highs / all lows
    - MTL: (MHW + MLW) / 2
 
-Computed datums are cached at `~/.cache/tides/datums/{model}.json`, keyed by coordinate rounded to model grid resolution. Computation takes ~2 seconds per point; cached lookups are instant.
+Computed datums are cached at `~/.cache/tides/datums/{model}.v2.json` (the version is bumped whenever computed values change; older files are left unused), keyed by coordinate rounded to model grid resolution. Computation takes ~5 seconds per point on GOT5.6; cached lookups are instant.
 
 ### cache.py — Cache management
 
@@ -133,10 +135,10 @@ Wraps `timezonefinder` to map coordinates to IANA timezone names, used by `--loc
 │   ├── noaa/*.json                      3,451 NOAA stations
 │   ├── ticon/*.json                     4,838 TICON stations
 │   └── station_index.json               Searchable index
-└── datums/                              Computed datum offsets
-    ├── got5.6.json                      Cached per model, per grid point
-    ├── fes2022.json
-    └── eot20.json
+└── datums/                              Computed datum offsets (versioned; older files unused)
+    ├── got5.6.v2.json                   Cached per model, per point
+    ├── fes2022.v2.json
+    └── eot20.v2.json
 
 ~/Library/Caches/pytmd/                  Model cache (platformdirs)
 ├── GOT5.5/                              694 MB (dependency of GOT5.6)
