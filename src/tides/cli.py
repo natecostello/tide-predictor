@@ -8,17 +8,23 @@ import httpx
 import typer
 
 from tides import __version__
+from tides.datums import SUPPORTED_DATUMS
 from tides.models import Coordinate, Source, TideResult
-from tides.ocean_model import SUPPORTED_MODELS
+from tides.ocean_model import DEFAULT_MODEL, SUPPORTED_MODELS
 
-# Matches a bare lat,lon token whose latitude has a leading '-'.
+# Valid values, listed in --help. Validated manually (case-insensitive) so an
+# invalid value exits 1 (user error), not Click's usage-error exit 2.
+_SOURCE_CHOICES = tuple(s.value for s in Source)
+_MODEL_CHOICES = tuple(m.lower() for m in sorted(SUPPORTED_MODELS))
+
+# Matches a bare lat,lon (or "lat lon") token whose latitude has a leading '-'.
 # Click would otherwise treat the leading '-' as the start of an option flag.
 # The float halves accept the same forms parse_coordinate does:
 # optional sign, optional integer part (e.g. "-.5"), optional fractional part,
 # and optional whitespace around the comma (relevant when the user quoted the
 # token to keep it as a single argv entry).
 _FLOAT = r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)"
-_NEG_COORD_RE = re.compile(rf"^-(?:\d+(?:\.\d*)?|\.\d+)\s*,\s*{_FLOAT}$")
+_NEG_COORD_RE = re.compile(rf"^-(?:\d+(?:\.\d*)?|\.\d+)(?:\s*,\s*|\s+){_FLOAT}$")
 
 
 def _escape_negative_coords(argv: list[str]) -> list[str]:
@@ -32,9 +38,13 @@ def _escape_negative_coords(argv: list[str]) -> list[str]:
     return [(" " + a) if _NEG_COORD_RE.match(a) else a for a in argv]
 
 
+# Help on -h/--help everywhere (subcommands inherit context_settings), and on
+# bare `tides`. Not applied to cache_app: bare `tides cache` shows cache info.
 app = typer.Typer(
     name="tides",
     add_completion=False,
+    no_args_is_help=True,
+    context_settings={"help_option_names": ["-h", "--help"]},
 )
 
 cache_app = typer.Typer(
@@ -55,29 +65,15 @@ def parse_coordinate(args: list[str]) -> Coordinate:
         )
         raise SystemExit(1)
 
-    # Join all args and try to split on comma
+    # Join all args and split on a comma, or on whitespace ("lat lon").
     joined = " ".join(args)
     joined = joined.replace(" ,", ",").replace(", ", ",")
 
-    if "," in joined:
-        parts = joined.split(",")
-        parts = [p.strip() for p in parts if p.strip()]
-        if len(parts) == 2:
-            try:
-                lat, lon = float(parts[0]), float(parts[1])
-            except (ValueError, TypeError):
-                pass
-            else:
-                try:
-                    return Coordinate(lat=lat, lon=lon)
-                except ValueError as e:
-                    print(f"Error: {e}", file=sys.stderr)
-                    raise SystemExit(1)
-
-    # Try as two separate float args
-    if len(args) == 2:
+    parts = joined.split(",") if "," in joined else joined.split()
+    parts = [p.strip() for p in parts if p.strip()]
+    if len(parts) == 2:
         try:
-            lat, lon = float(args[0]), float(args[1])
+            lat, lon = float(parts[0]), float(parts[1])
         except (ValueError, TypeError):
             pass
         else:
@@ -92,6 +88,11 @@ def parse_coordinate(args: list[str]) -> Coordinate:
         file=sys.stderr,
     )
     raise SystemExit(1)
+
+
+# Longest accepted --date range, inclusive. NOAA's own hilo limit is 3,655
+# days, so this is well within it; it bounds the 1-minute model arrays.
+MAX_DATE_RANGE_DAYS = 366
 
 
 def parse_date_arg(
@@ -130,6 +131,13 @@ def parse_date_arg(
         if end < begin:
             print("Error: End date must not be before begin date.", file=sys.stderr)
             raise SystemExit(1)
+        n_days = (end - begin).days + 1
+        if n_days > MAX_DATE_RANGE_DAYS:
+            print(
+                f"Error: date range too long ({n_days} days); maximum is {MAX_DATE_RANGE_DAYS}.",
+                file=sys.stderr,
+            )
+            raise SystemExit(1)
         return begin, end
 
     try:
@@ -162,10 +170,16 @@ def parse_between(between_str: str | None) -> tuple[datetime.time, datetime.time
             file=sys.stderr,
         )
         raise SystemExit(1)
-    if end < start:
-        print("Error: --between end time must not be before start time.", file=sys.stderr)
-        raise SystemExit(1)
+    # end < start is a window that wraps midnight (e.g. 20:00:04:00).
     return start, end
+
+
+def _in_window(t: datetime.time, between: tuple[datetime.time, datetime.time]) -> bool:
+    """True when t is inside the --between window (which may wrap midnight)."""
+    start, end = between
+    if start <= end:
+        return start <= t <= end
+    return t >= start or t <= end
 
 
 def _url_host(exc: Exception) -> str:
@@ -235,7 +249,7 @@ def format_plain(
 
             if between is not None:
                 t = display_time.time().replace(second=0, microsecond=0)
-                if not (between[0] <= t <= between[1]):
+                if not _in_window(t, between):
                     continue
 
             height = _finite_height(event.height_ft if feet else event.height)
@@ -289,7 +303,7 @@ def format_json(
 
             if between is not None:
                 t = display_time.time().replace(second=0, microsecond=0)
-                if not (between[0] <= t <= between[1]):
+                if not _in_window(t, between):
                     continue
 
             height = _finite_height(event.height_ft if feet else event.height)
@@ -336,17 +350,23 @@ def get(
     feet: bool = typer.Option(False, "--feet", "-f", help="Display heights in feet"),
     json_output: bool = typer.Option(False, "--json", "-j", help="Output as JSON"),
     between: Optional[str] = typer.Option(
-        None, "--between", "-b", help="Time filter: HH:MM:HH:MM"
+        None,
+        "--between",
+        "-b",
+        help="Time filter HH:MM:HH:MM; a start after the end wraps midnight (20:00:04:00)",
     ),
     precision: int = typer.Option(1, "--precision", "-p", help="Decimal places for height"),
     source: str = typer.Option(
-        "auto", "--source", "-s", help="Data source: auto, noaa, station, model"
+        "auto", "--source", "-s", help=f"Data source: {', '.join(_SOURCE_CHOICES)}"
     ),
-    model: str = typer.Option(
-        "got5.6", "--model", "-m", help="Tide model: got5.6, eot20, fes2022"
+    model: Optional[str] = typer.Option(
+        None,
+        "--model",
+        "-m",
+        help=f"Tide model: {', '.join(_MODEL_CHOICES)} (default: {DEFAULT_MODEL.lower()})",
     ),
     datum: str = typer.Option(
-        "mllw", "--datum", help="Height datum: mllw, mlw, msl, mtl, mhw, mhhw, lat, hat"
+        "mllw", "--datum", help=f"Height datum: {', '.join(SUPPORTED_DATUMS)}"
     ),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Show source details"),
 ) -> None:
@@ -358,8 +378,6 @@ def get(
     if precision < 0:
         print("Error: --precision must be a non-negative integer.", file=sys.stderr)
         raise SystemExit(1)
-
-    from tides.datums import SUPPORTED_DATUMS
 
     datum_lower = datum.lower()
     if datum_lower not in SUPPORTED_DATUMS:
@@ -373,15 +391,16 @@ def get(
         source_enum = Source(source.lower())
     except ValueError:
         print(
-            f"Error: Invalid source '{source}'. Expected: auto, noaa, station, model",
+            f"Error: Invalid source '{source}'. Expected: {', '.join(_SOURCE_CHOICES)}",
             file=sys.stderr,
         )
         raise SystemExit(1)
 
-    model_name = model.upper()
+    model_explicit = model is not None
+    model_name = (model or DEFAULT_MODEL).upper()
     if model_name not in SUPPORTED_MODELS:
         print(
-            f"Error: Invalid model '{model}'. Expected: {', '.join(sorted(SUPPORTED_MODELS))}",
+            f"Error: Invalid model '{model}'. Expected: {', '.join(_MODEL_CHOICES)}",
             file=sys.stderr,
         )
         raise SystemExit(1)
@@ -432,6 +451,14 @@ def get(
     except Exception as e:
         _report_unexpected(e, "while fetching tide data")
         raise SystemExit(2)
+
+    if model_explicit and result.source_type != Source.MODEL:
+        origin = "NOAA" if result.source_type == Source.NOAA else "station"
+        print(
+            f"Note: --model {model_name} ignored; tides came from {origin} "
+            f"'{result.station_name}'. Use --source model to force the model.",
+            file=sys.stderr,
+        )
 
     try:
         if json_output:

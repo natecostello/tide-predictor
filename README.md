@@ -37,6 +37,9 @@ tides get 40.7128,-74.0060 --json
 # Only daytime tides
 tides get 40.7128,-74.0060 --between 06:00:18:00
 
+# Night window (wraps midnight)
+tides get 40.7128,-74.0060 --between 20:00:04:00
+
 # Force NOAA station data
 tides get 40.7128,-74.0060 --source noaa
 
@@ -76,10 +79,10 @@ negative-coordinate tokens so Click does not parse them as option flags.
 | `--local` | `-l` | Times in local timezone at coordinates. Days, `--date` bounds and the default "today" all follow the local clock (open-ocean points use their nautical `Etc/GMT` zone; UTC only if no zone is known at all) |
 | `--feet` | `-f` | Heights in feet (default: meters) |
 | `--json` | `-j` | JSON output |
-| `--between` | `-b` | Time window filter (HH:MM:HH:MM) |
+| `--between` | `-b` | Time window filter (HH:MM:HH:MM); a start after the end wraps midnight, e.g. `20:00:04:00` |
 | `--precision` | `-p` | Decimal places for height (default: 1) |
 | `--source` | `-s` | Data source: auto, noaa, station, model (default: auto) |
-| `--model` | `-m` | Tide model: got5.6, eot20, fes2022 (default: got5.6) |
+| `--model` | `-m` | Tide model: got5.6, got5.5, eot20, fes2022 (default: got5.6). Used only when the model answers; if a NOAA or station source answers, a note on stderr says the flag was ignored (use `--source model` to force it) |
 | `--datum` | | Height datum: mllw, mlw, msl, mtl, mhw, mhhw, lat, hat (default: mllw) |
 | `--verbose` | `-v` | Show source details |
 | `--version` | | Show version |
