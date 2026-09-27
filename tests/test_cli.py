@@ -396,9 +396,15 @@ class TestFormatJsonBetweenFilter:
         the daytime one, in the JSON formatter too (#29 review)."""
         utc = datetime.timezone.utc
         events = [
-            TideEvent(time=datetime.datetime(2026, 4, 15, 1, 30, tzinfo=utc), height=0.5),
-            TideEvent(time=datetime.datetime(2026, 4, 15, 12, 0, tzinfo=utc), height=1.2),
-            TideEvent(time=datetime.datetime(2026, 4, 15, 22, 15, tzinfo=utc), height=-0.3),
+            TideEvent(
+                time=datetime.datetime(2026, 4, 15, 1, 30, tzinfo=utc), height=0.5, kind="high"
+            ),
+            TideEvent(
+                time=datetime.datetime(2026, 4, 15, 12, 0, tzinfo=utc), height=1.2, kind="high"
+            ),
+            TideEvent(
+                time=datetime.datetime(2026, 4, 15, 22, 15, tzinfo=utc), height=-0.3, kind="low"
+            ),
         ]
         result = TideResult(
             coordinate=Coordinate(lat=40.7128, lon=-74.0060),
