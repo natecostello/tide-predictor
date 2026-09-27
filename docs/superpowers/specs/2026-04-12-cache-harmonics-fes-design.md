@@ -13,7 +13,7 @@ New Typer sub-app at `tides cache` with two commands:
 
 **`tides cache`** (default action, implemented as callback):
 - Lists both cache locations with sizes:
-  - App cache (`~/.cache/tides/`): station index, NOAA stations, station database
+  - App cache (`~/.cache/tides/`): station index, NOAA stations, station database, datum cache (added #17)
   - Model cache (`~/Library/Caches/pytmd/` via platformdirs): GOT5.5, GOT5.6, EOT20, FES2022, HAMTIDE11
 - Shows per-model directory sizes
 - `--json` flag for machine-readable output
@@ -23,6 +23,8 @@ New Typer sub-app at `tides cache` with two commands:
 - `name` argument: clears specific item (`stations`, `got5.5`, `got5.6`, `eot20`, `fes2022`, `hamtide11`)
 - `--yes` flag to skip confirmation
 - Reports bytes freed
+
+> **Amended 2026-09-27 (#17):** with no argument, `cache clear` now removes only the app cache plus the auto-downloaded GOT5.5/GOT5.6; EOT20 and the manually downloaded FES2022/HAMTIDE11 (in pyTMD's shared cache, which other tools may use) are removed only when named or with the new `--all` flag. `datums` is a new name. The confirmation prompt lists every item (name, size, path) before deleting, and removal errors are reported (exit 2) instead of ignored.
 
 ### Files Changed
 - `src/tides/cli.py` — add `cache_app` Typer sub-app
