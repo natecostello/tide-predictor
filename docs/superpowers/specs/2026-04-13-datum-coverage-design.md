@@ -15,11 +15,11 @@ Computes tidal datums (LAT, MLLW, MLW, MSL, MHW, MHHW, HAT) from either station 
 
 1. **Station path** — station files include a `datums` dict with offsets relative to STND. Convert: `height_datum = height_msl + (MSL - target_datum)` using the station's published values.
 
-2. **Model path** — run 19-year hourly prediction (2003–2021) at the coordinate using the selected model. From the time series, compute:
+2. **Model path** — run a 19-year prediction (2003-01-01 to 2022-01-01, end exclusive) at 6-minute intervals at the coordinate using the selected model (originally hourly; superseded by the #13 amendment below). From the time series, compute:
    - LAT/HAT: min/max
-   - MHW/MLW: mean of daily highs / daily lows
-   - MHHW/MLLW: mean of daily higher-highs / daily lower-lows
-   - MSL: mean of entire series (should be ~0 for models)
+   - MHW/MLW: mean of all highs / all lows
+   - MHHW/MLLW: mean of higher-highs / lower-lows per tidal day (24.8412 h; originally per calendar day)
+   - MSL: 0 by definition -- the harmonic series has no Z0 term, and model event heights share this zero (originally "mean of entire series")
 
 **Caching**: store computed model datums at `~/.cache/tides/datums/{model}.v2.json` (versioned; originally `{model}.json`), keyed by coordinate rounded to model grid resolution (1/16° for FES2022, 0.5° for GOT5.6). Entries never expire.
 
