@@ -112,17 +112,26 @@ def _model_exists(model_name: str) -> bool:
 
 
 def _get_pytmd_data_dir() -> Path:
-    """Get pyTMD's default data directory (platformdirs cache).
+    """pyTMD's real data directory (platformdirs cache).
 
-    TIDES_PYTMD_DIR is an undocumented override for tests/sandboxes; it only
-    redirects this tool's cache listing/clearing, not pyTMD's own lookup.
+    Used by every model fetch/marker path, so downloads always land where
+    pyTMD looks for them.
     """
-    override = os.environ.get("TIDES_PYTMD_DIR")
-    if override:
-        return Path(override)
     import platformdirs
 
     return Path(platformdirs.user_cache_dir("pytmd"))
+
+
+def _get_listing_pytmd_dir() -> Path:
+    """pyTMD directory as seen by `tides cache` listing and clearing.
+
+    TIDES_PYTMD_DIR is an undocumented override for tests/sandboxes. It only
+    redirects listing/clearing (get_cache_info, plan_clear, clear_cache),
+    never model downloads, so it cannot put model files where pyTMD won't
+    find them.
+    """
+    override = os.environ.get("TIDES_PYTMD_DIR")
+    return Path(override) if override else _get_pytmd_data_dir()
 
 
 def _fetch_got() -> None:
@@ -327,7 +336,7 @@ def format_size(size_bytes: int) -> str:
 def get_cache_info() -> dict:
     """Return structured cache information for both app and model caches."""
     app_dir = get_cache_dir(create=False)
-    pytmd_dir = _get_pytmd_data_dir()
+    pytmd_dir = _get_listing_pytmd_dir()
 
     # App cache breakdown
     stations_dir = app_dir / "stations"
@@ -382,7 +391,7 @@ def plan_clear(name: str | None = None, include_all: bool = False) -> list[dict]
     - a model name: that model's directory in pyTMD's cache.
     """
     app_dir = get_cache_dir(create=False)
-    pytmd_dir = _get_pytmd_data_dir()
+    pytmd_dir = _get_listing_pytmd_dir()
 
     if name is None:
         candidates = [("App cache", app_dir)]

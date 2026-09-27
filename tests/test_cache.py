@@ -603,7 +603,7 @@ class TestEot20Marker:
         (partial / "M2.nc").write_bytes(b"x")
         other = pytmd / "GOT5.6"
         other.mkdir(parents=True)
-        monkeypatch.setenv("TIDES_PYTMD_DIR", str(pytmd))
+        monkeypatch.setattr("tides.cache._get_pytmd_data_dir", lambda: pytmd)
         with patch("httpx.stream", side_effect=RuntimeError("stop before download")):
             with pytest.raises(RuntimeError):
                 cache._fetch_eot20()
@@ -616,7 +616,7 @@ class TestEot20Marker:
         pytmd = tmp_path / "pytmd"
         (pytmd / "EOT20").mkdir(parents=True)
         (pytmd / "EOT20" / cache.EOT20_COMPLETE_MARKER).write_text("ok")
-        monkeypatch.setenv("TIDES_PYTMD_DIR", str(pytmd))
+        monkeypatch.setattr("tides.cache._get_pytmd_data_dir", lambda: pytmd)
         with patch("httpx.stream") as stream:
             cache._fetch_eot20()
         stream.assert_not_called()
@@ -626,10 +626,23 @@ class TestEot20Marker:
 
         pytmd = tmp_path / "pytmd"
         (pytmd / "EOT20").mkdir(parents=True)
-        monkeypatch.setenv("TIDES_PYTMD_DIR", str(pytmd))
+        monkeypatch.setattr("tides.cache._get_pytmd_data_dir", lambda: pytmd)
         with patch("tides.cache._model_exists", return_value=True):
             cache.ensure_model_data("EOT20")
         assert (pytmd / "EOT20" / cache.EOT20_COMPLETE_MARKER).exists()
+
+    def test_listing_override_never_redirects_model_fetch(self, tmp_path, monkeypatch):
+        from tides import cache
+
+        monkeypatch.setenv("TIDES_PYTMD_DIR", str(tmp_path / "sandbox"))
+        real = tmp_path / "real"
+        monkeypatch.setattr("tides.cache._get_pytmd_data_dir", lambda: real)
+        assert cache._get_listing_pytmd_dir() == tmp_path / "sandbox"
+        (real / "EOT20").mkdir(parents=True)
+        (real / "EOT20" / cache.EOT20_COMPLETE_MARKER).write_text("ok")
+        with patch("httpx.stream") as stream:
+            cache._fetch_eot20()  # looks in the real dir, not the override
+        stream.assert_not_called()
 
 
 class TestNetworkGuard:
