@@ -258,8 +258,9 @@ class TestComputeTides:
     @patch("pyTMD.io.model")
     @patch("tides.cache.ensure_model_data")
     def test_compute_tides_date_range(self, mock_ensure, mock_model_cls, mock_predict, mock_infer):
-        """Single day spans 24h at 1-min intervals (1440 points)."""
-        n = 24 * 60 // ELEVATION_INTERVAL_MINUTES
+        """Single day spans 24h at 1-min intervals, padded by EDGE_PAD (3 h)
+        on each side so extrema at the day edges are detectable (#10)."""
+        n = (24 + 6) * 60 // ELEVATION_INTERVAL_MINUTES
         self._setup_pytmd_mocks(mock_ensure, mock_model_cls, mock_predict, mock_infer, n=n)
         coord = Coordinate(lat=40.7, lon=-74.0)
         compute_tides(coord, datetime.date(2025, 12, 3), datetime.date(2025, 12, 3))
@@ -275,7 +276,8 @@ class TestComputeTides:
         self, mock_ensure, mock_model_cls, mock_predict, mock_infer
     ):
         """Mock predict returning a sine wave -> TideEvent list with highs and lows."""
-        self._setup_pytmd_mocks(mock_ensure, mock_model_cls, mock_predict, mock_infer)
+        n = (24 + 6) * 60 // ELEVATION_INTERVAL_MINUTES
+        self._setup_pytmd_mocks(mock_ensure, mock_model_cls, mock_predict, mock_infer, n=n)
         events = compute_tides(
             Coordinate(lat=40.7, lon=-74.0), datetime.date(2025, 12, 3), datetime.date(2025, 12, 3)
         )

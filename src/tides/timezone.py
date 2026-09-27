@@ -24,3 +24,9 @@ def to_local_time(utc_time: datetime.datetime, coord: Coordinate) -> datetime.da
     if tz_name is None:
         return utc_time
     return utc_time.astimezone(ZoneInfo(tz_name))
+
+
+def get_zoneinfo(coord: Coordinate) -> datetime.tzinfo:
+    """The coordinate's local timezone, or UTC when none is known (open ocean)."""
+    tz_name = get_timezone_name(coord)
+    return ZoneInfo(tz_name) if tz_name else datetime.timezone.utc

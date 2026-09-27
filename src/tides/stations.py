@@ -9,9 +9,10 @@ import json
 import sys
 from pathlib import Path
 
-from tides.harmonics import predict_tides_for_day
+from tides.harmonics import predict_tides_range
 from tides.models import Coordinate, TideEvent
 from tides.noaa import haversine_km
+from tides.ocean_model import utc_day_window
 
 STATION_DB_URL = "https://raw.githubusercontent.com/openwatersio/tide-database/main/data"
 STATION_INDEX_FILENAME = "station_index.json"
@@ -134,14 +135,10 @@ def predict_station_tides(
     offsets = datums_from_station(station) or {}
     datum_offset = -offsets.get(heights_datum, 0.0) if heights_datum != "msl" else 0.0
 
-    all_events = []
-    current = begin_date
-    while current <= end_date:
-        events = predict_tides_for_day(current, constituents, datum_offset)
-        all_events.extend(events)
-        current += datetime.timedelta(days=1)
-
-    return all_events
+    # One continuous (padded) series over the whole range, so extrema at UTC
+    # day boundaries are not dropped between per-day predictions.
+    start, end = utc_day_window(begin_date, end_date)
+    return predict_tides_range(start, end, constituents, datum_offset)
 
 
 def download_station_database() -> None:

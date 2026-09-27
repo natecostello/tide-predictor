@@ -27,7 +27,14 @@ def _group_events_by_date(
     events: list[TideEvent],
     begin_date: datetime.date,
     end_date: datetime.date,
+    tz: datetime.tzinfo | None = None,
 ) -> list[TideDay]:
+    """Bucket events into the requested dates on the display clock.
+
+    `tz` is the clock the caller will display (None = UTC). Events whose
+    date on that clock falls outside [begin_date, end_date] are dropped, which
+    also trims any widened fetch window.
+    """
     days: dict[datetime.date, list[TideEvent]] = {}
     current = begin_date
     while current <= end_date:
@@ -35,7 +42,8 @@ def _group_events_by_date(
         current += datetime.timedelta(days=1)
 
     for event in events:
-        event_date = event.time.date()
+        clock_time = event.time.astimezone(tz) if tz is not None else event.time
+        event_date = clock_time.date()
         if event_date in days:
             days[event_date].append(event)
 
@@ -43,6 +51,20 @@ def _group_events_by_date(
         TideDay(date=d, events=sorted(evts, key=lambda e: e.time))
         for d, evts in sorted(days.items())
     ]
+
+
+def _fetch_dates(
+    begin_date: datetime.date, end_date: datetime.date, tz: datetime.tzinfo | None
+) -> tuple[datetime.date, datetime.date]:
+    """UTC dates to fetch/predict so every requested local day is complete.
+
+    Local days can start or end up to ~14 h away from UTC midnight, so widen
+    by one UTC day on each side whenever grouping on a non-UTC clock.
+    """
+    if tz is None:
+        return begin_date, end_date
+    one = datetime.timedelta(days=1)
+    return begin_date - one, end_date + one
 
 
 def _note_fallthrough(reason: str, next_source: str) -> None:
@@ -119,6 +141,7 @@ def _resolve_noaa(
     stations: list[dict],
     datum: str = "mllw",
     max_distance_km: float = MAX_NOAA_DISTANCE_KM,
+    tz: datetime.tzinfo | None = None,
 ) -> TideResult | None:
     """Resolve tides from the nearest NOAA station, in the requested datum.
 
@@ -131,8 +154,9 @@ def _resolve_noaa(
         return None
 
     station, distance = result
-    events = _fetch_noaa_events(station, begin_date, end_date, datum)
-    days = _group_events_by_date(events, begin_date, end_date)
+    fetch_begin, fetch_end = _fetch_dates(begin_date, end_date, tz)
+    events = _fetch_noaa_events(station, fetch_begin, fetch_end, datum)
+    days = _group_events_by_date(events, begin_date, end_date, tz)
 
     return TideResult(
         coordinate=coord,
@@ -151,6 +175,7 @@ def _resolve_station(
     begin_date: datetime.date,
     end_date: datetime.date,
     max_distance_km: float = MAX_STATION_DISTANCE_KM,
+    tz: datetime.tzinfo | None = None,
 ) -> tuple[TideResult, dict] | None:
     from tides.stations import (
         find_nearest_station,
@@ -166,11 +191,12 @@ def _resolve_station(
 
     entry, distance = result
     station = load_station(entry)
-    events = predict_station_tides(station, begin_date, end_date)
+    fetch_begin, fetch_end = _fetch_dates(begin_date, end_date, tz)
+    events = predict_station_tides(station, fetch_begin, fetch_end)
     if not events:
         return None
 
-    days = _group_events_by_date(events, begin_date, end_date)
+    days = _group_events_by_date(events, begin_date, end_date, tz)
 
     tide_result = TideResult(
         coordinate=coord,
@@ -189,8 +215,10 @@ def _resolve_model(
     begin_date: datetime.date,
     end_date: datetime.date,
     model_name: str = DEFAULT_MODEL,
+    tz: datetime.tzinfo | None = None,
 ) -> TideResult:
-    events = compute_tides(coord, begin_date, end_date, model_name=model_name)
+    fetch_begin, fetch_end = _fetch_dates(begin_date, end_date, tz)
+    events = compute_tides(coord, fetch_begin, fetch_end, model_name=model_name)
     if not events:
         print(
             "Error: No tidal data for this location -- it may be inland.",
@@ -198,7 +226,7 @@ def _resolve_model(
         )
         raise SystemExit(2)
 
-    days = _group_events_by_date(events, begin_date, end_date)
+    days = _group_events_by_date(events, begin_date, end_date, tz)
 
     return TideResult(
         coordinate=coord,
@@ -284,10 +312,17 @@ def resolve_tides(
     source: Source = Source.AUTO,
     model_name: str = DEFAULT_MODEL,
     datum: str = "mllw",
+    tz: datetime.tzinfo | None = None,
 ) -> TideResult:
+    """Resolve tides for [begin_date, end_date].
+
+    `tz` is the display clock used for day grouping (None = UTC, i.e. without
+    --local). With a tz, the underlying fetch/prediction is widened by a day
+    on each side and trimmed back to the requested local dates.
+    """
     if source == Source.NOAA:
         stations = get_stations()
-        result = _resolve_noaa(coord, begin_date, end_date, stations, datum)
+        result = _resolve_noaa(coord, begin_date, end_date, stations, datum, tz=tz)
         if result is None:
             dist = MAX_NOAA_DISTANCE_KM
             print(
@@ -298,7 +333,7 @@ def resolve_tides(
         return _apply_datum(result, datum, model_name)
 
     if source == Source.STATION:
-        resolved = _resolve_station(coord, begin_date, end_date)
+        resolved = _resolve_station(coord, begin_date, end_date, tz=tz)
         if resolved is None:
             dist = MAX_STATION_DISTANCE_KM
             print(
@@ -310,7 +345,7 @@ def resolve_tides(
         return _apply_datum(result, datum, model_name, station=station)
 
     if source == Source.MODEL:
-        result = _resolve_model(coord, begin_date, end_date, model_name=model_name)
+        result = _resolve_model(coord, begin_date, end_date, model_name=model_name, tz=tz)
         return _apply_datum(result, datum, model_name)
 
     # AUTO: try NOAA API first (most accurate for US), then global station
@@ -321,7 +356,7 @@ def resolve_tides(
     # handled separately, see #16.)
     stations = get_stations()
     try:
-        noaa_result = _resolve_noaa(coord, begin_date, end_date, stations, datum)
+        noaa_result = _resolve_noaa(coord, begin_date, end_date, stations, datum, tz=tz)
     except NOAAError as e:
         _note_fallthrough(str(e), "other sources")
         noaa_result = None
@@ -331,10 +366,10 @@ def resolve_tides(
     if noaa_result is not None:
         return _apply_datum(noaa_result, datum, model_name)
 
-    station_resolved = _resolve_station(coord, begin_date, end_date)
+    station_resolved = _resolve_station(coord, begin_date, end_date, tz=tz)
     if station_resolved is not None:
         result, station = station_resolved
         return _apply_datum(result, datum, model_name, station=station)
 
-    result = _resolve_model(coord, begin_date, end_date, model_name=model_name)
+    result = _resolve_model(coord, begin_date, end_date, model_name=model_name, tz=tz)
     return _apply_datum(result, datum, model_name)

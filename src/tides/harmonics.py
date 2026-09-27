@@ -14,7 +14,14 @@ import pyTMD.constituents
 import xarray as xr
 
 from tides.models import TideEvent
-from tides.ocean_model import ELEVATION_INTERVAL_MINUTES, find_extrema, utc_minutes
+from tides.ocean_model import (
+    EDGE_PAD,
+    ELEVATION_INTERVAL_MINUTES,
+    find_extrema,
+    in_window,
+    utc_day_window,
+    utc_minutes,
+)
 
 # Correction type for station harmonic constants.
 # OTIS uses the standard Doodson/IHO astronomical argument conventions,
@@ -107,35 +114,27 @@ def predict_elevations(constituents: list[dict], t: np.ndarray, chunks: int = 1)
     return np.concatenate(parts)
 
 
+def predict_tides_range(
+    start: datetime.datetime,
+    end: datetime.datetime,
+    constituents: list[dict],
+    datum_offset: float = 0.0,
+) -> list[TideEvent]:
+    """High/low events in [start, end) from one continuous series padded by
+    EDGE_PAD on each side (so extrema at the window edges are not lost)."""
+    if not constituents:
+        return []
+
+    t, times = utc_minutes(start - EDGE_PAD, end + EDGE_PAD, ELEVATION_INTERVAL_MINUTES)
+    elevations = predict_elevations(constituents, t) + datum_offset
+    return in_window(find_extrema(times, elevations), start, end)
+
+
 def predict_tides_for_day(
     date: datetime.date,
     constituents: list[dict],
     datum_offset: float = 0.0,
 ) -> list[TideEvent]:
-    """Predict high/low tides for a single day using pyTMD.
-
-    Constructs an xarray Dataset from station harmonic constituents and
-    feeds it through pyTMD's predict.time_series() + predict.infer_minor().
-    """
-    import pyTMD.predict
-
-    if not constituents:
-        return []
-
-    ds = _build_dataset(constituents)
-    if len(ds.data_vars) == 0:
-        return []
-
-    start = datetime.datetime(date.year, date.month, date.day, tzinfo=datetime.timezone.utc)
-    end = start + datetime.timedelta(days=1)
-
-    t, times = utc_minutes(start, end, ELEVATION_INTERVAL_MINUTES)
-
-    tide = pyTMD.predict.time_series(t, ds, corrections=STATION_CORRECTIONS)
-    minor = pyTMD.predict.infer_minor(t, ds, corrections=STATION_CORRECTIONS)
-
-    tide_arr = np.atleast_1d(np.asarray(tide)).astype(float)
-    minor_arr = np.atleast_1d(np.asarray(minor)).astype(float)
-    elevations = tide_arr.flatten() + minor_arr.flatten() + datum_offset
-
-    return find_extrema(times, elevations)
+    """Predict high/low tides for a single UTC day using pyTMD."""
+    start, end = utc_day_window(date, date)
+    return predict_tides_range(start, end, constituents, datum_offset)

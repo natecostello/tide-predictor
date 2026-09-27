@@ -19,6 +19,11 @@ ELEVATION_INTERVAL_MINUTES = 1
 _MIN_PEAK_SEPARATION_MINUTES = 120
 _MIN_PEAK_DISTANCE = _MIN_PEAK_SEPARATION_MINUTES // ELEVATION_INTERVAL_MINUTES
 
+# Predictions run over a window padded on both sides so extrema at the
+# requested range's edges (e.g. exactly 00:00 UTC) are detectable:
+# find_peaks never reports the first or last sample of a series.
+EDGE_PAD = datetime.timedelta(hours=3)
+
 # Reference epoch for pyTMD predict.time_series: 1992-01-01T00:00:00 UTC
 _PYTMD_PREDICT_EPOCH = datetime.datetime(1992, 1, 1, tzinfo=datetime.timezone.utc)
 
@@ -148,21 +153,37 @@ def predict_elevations(t: np.ndarray, local: "xr.Dataset", model: Any) -> np.nda
     return (tide_arr + minor_arr).ravel()
 
 
-def compute_tides(
-    coord: Coordinate,
-    begin_date: datetime.date,
-    end_date: datetime.date,
-    model_name: str = DEFAULT_MODEL,
-) -> list[TideEvent]:
+def utc_day_window(
+    begin_date: datetime.date, end_date: datetime.date
+) -> tuple[datetime.datetime, datetime.datetime]:
+    """[begin 00:00Z, end+1 00:00Z) for an inclusive range of UTC dates."""
     start = datetime.datetime(
         begin_date.year, begin_date.month, begin_date.day, tzinfo=datetime.timezone.utc
     )
     end = datetime.datetime(
         end_date.year, end_date.month, end_date.day, tzinfo=datetime.timezone.utc
     ) + datetime.timedelta(days=1)
+    return start, end
 
-    t, times = utc_minutes(start, end, ELEVATION_INTERVAL_MINUTES)
+
+def in_window(
+    events: list[TideEvent], start: datetime.datetime, end: datetime.datetime
+) -> list[TideEvent]:
+    return [e for e in events if start <= e.time < end]
+
+
+def compute_tides(
+    coord: Coordinate,
+    begin_date: datetime.date,
+    end_date: datetime.date,
+    model_name: str = DEFAULT_MODEL,
+) -> list[TideEvent]:
+    """High/low events in [begin 00:00Z, end+1 00:00Z), predicted as one
+    continuous series padded by EDGE_PAD on each side."""
+    start, end = utc_day_window(begin_date, end_date)
+
+    t, times = utc_minutes(start - EDGE_PAD, end + EDGE_PAD, ELEVATION_INTERVAL_MINUTES)
     local, m = load_local_constituents(coord.lat, coord.lon, model_name)
     elevations = predict_elevations(t, local, m)
 
-    return find_extrema(times, elevations)
+    return in_window(find_extrema(times, elevations), start, end)
