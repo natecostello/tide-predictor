@@ -108,7 +108,7 @@ Manages two cache locations:
 - **App cache** (`~/.cache/tides/`): station list, station database, datum computations
 - **Model cache** (`~/Library/Caches/pytmd/` on macOS): pyTMD model files
 
-`tides cache` shows both with sizes. `tides cache clear [name]` deletes selectively.
+`tides cache` shows both with sizes (including the datum cache). `tides cache clear [name]` deletes selectively (`stations`, `datums`, or a model name); with no name it removes the app cache plus the auto-downloaded GOT5.5/GOT5.6 only -- EOT20 and the manually downloaded FES2022/HAMTIDE11 in pyTMD's shared cache are removed only when named or with `--all`. The prompt lists every item (path and size) before deleting. Cache files are written atomically (temp file + `os.replace`); EOT20 gets a `.tides-complete` marker so an interrupted extraction is detected and redone.
 
 ### Day grouping and `--local`
 

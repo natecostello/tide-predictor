@@ -10,7 +10,7 @@ import sys
 from collections.abc import Iterator
 from pathlib import Path
 
-from tides.cache import StationDatabaseError
+from tides.cache import StationDatabaseError, atomic_write_text
 from tides.harmonics import predict_tides_range
 from tides.models import Coordinate, TideEvent
 from tides.noaa import haversine_km
@@ -218,7 +218,7 @@ def download_station_database() -> None:
     # Build and save the index
     index = build_station_index(stations_dir)
     index_path = _get_index_path()
-    index_path.write_text(json.dumps(index))
+    atomic_write_text(index_path, json.dumps(index))
     print(f"Station database ready: {len(index)} stations.", file=sys.stderr)
 
 
