@@ -7,7 +7,7 @@ import xarray as xr
 
 from tides.harmonics import _build_dataset, predict_tides_for_day
 
-# Bermuda (NOAA 2695540) harmonic constants — well-known station for validation
+# Bermuda (NOAA 2695540) harmonic constants -- well-known station for validation
 BERMUDA_CONSTITUENTS = [
     {"name": "M2", "amplitude": 0.367, "phase": 358.6},
     {"name": "S2", "amplitude": 0.080, "phase": 25.4},
@@ -124,7 +124,7 @@ class TestPredictTidesForDay:
             assert events[i].time < events[i + 1].time
 
     def test_semidiurnal_produces_four_events(self):
-        """Bermuda is semidiurnal — expect ~4 extrema per day (2 highs, 2 lows)."""
+        """Bermuda is semidiurnal -- expect ~4 extrema per day (2 highs, 2 lows)."""
         events = predict_tides_for_day(datetime.date(2026, 4, 15), BERMUDA_CONSTITUENTS)
         assert len(events) == 4 or len(events) == 3  # 3 if one crosses midnight
 

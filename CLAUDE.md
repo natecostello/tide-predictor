@@ -78,6 +78,10 @@ Follow these principles in all CLI work:
 - Use `ruff` for linting and formatting
 - Use `uv` for dependency management
 - Use `pytest` for testing
+- Unit tests are isolated by autouse fixtures in `tests/conftest.py`: HOME/XDG_CACHE_HOME point at `tmp_path`, `get_model_datums` is stubbed, and outbound sockets raise `NetworkBlockedError`. Integration tests (`-m integration`) opt out and run the working tree via `python -m tides`
+- The package version lives only in `pyproject.toml`; runtime reads it via `importlib.metadata`
+- Source, config and CI files are ASCII-only (enforced in CI); Markdown is exempt
+- `uv.lock` is committed; CI installs with `uv sync --locked`
 - Type hints on all public functions
 - Request a GitHub Copilot review upon submitting a PR
 

@@ -20,7 +20,7 @@ class TestGetTimezoneName:
         assert get_timezone_name(coord) == "Europe/London"
 
     def test_ocean_returns_utc_offset_timezone(self):
-        # Middle of the Pacific — timezonefinder returns Etc/GMT+X for ocean
+        # Middle of the Pacific -- timezonefinder returns Etc/GMT+X for ocean
         coord = Coordinate(lat=0.0, lon=-160.0)
         result = get_timezone_name(coord)
         assert result is not None

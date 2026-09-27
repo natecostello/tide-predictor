@@ -63,7 +63,7 @@ def load_station_cache() -> list[dict] | None:
     try:
         return json.loads(path.read_text())
     except (json.JSONDecodeError, ValueError):
-        # Corrupted cache — delete and refetch
+        # Corrupted cache -- delete and refetch
         path.unlink(missing_ok=True)
         return None
 

@@ -176,7 +176,7 @@ def _get_datum_cache_dir() -> Path:
 
 def _grid_key(lat: float, lon: float, model_name: str) -> str:
     """Round coordinate to model grid resolution for cache key."""
-    # FES2022: 1/16° (~0.0625°), GOT: 0.5°, EOT20: 0.125°
+    # FES2022: 1/16 deg (~0.0625 deg), GOT: 0.5 deg, EOT20: 0.125 deg
     resolutions = {"FES2022": 0.0625, "GOT5.6": 0.5, "GOT5.5": 0.5, "EOT20": 0.125}
     res = resolutions.get(model_name, 0.125)
     rlat = round(round(lat / res) * res, 4)

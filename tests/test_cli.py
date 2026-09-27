@@ -1,5 +1,6 @@
 import datetime
 import json as json_module
+from importlib.metadata import version
 from unittest.mock import patch
 
 import httpx
@@ -415,7 +416,7 @@ class TestCLIInvocation:
     def test_version_flag(self):
         result = runner.invoke(app, ["--version"])
         assert result.exit_code == 0
-        assert "tides 0.1.0" in result.output
+        assert f"tides {version('tides')}" in result.output
 
     def test_no_args_shows_usage_error(self):
         result = runner.invoke(app, [])
