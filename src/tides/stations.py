@@ -222,14 +222,42 @@ def download_station_database() -> None:
     print(f"Station database ready: {len(index)} stations.", file=sys.stderr)
 
 
+_INDEX_KEYS = ("id", "lat", "lon", "file")
+
+
+def load_valid_index(index_path: Path) -> list[dict] | None:
+    """Parse the station index; None unless it is a list of usable entries."""
+    try:
+        data = json.loads(index_path.read_text())
+    except (OSError, json.JSONDecodeError, ValueError):
+        return None
+    if not isinstance(data, list):
+        return None
+    if not all(isinstance(e, dict) and all(k in e for k in _INDEX_KEYS) for e in data):
+        return None
+    return data
+
+
 def get_station_index() -> list[dict]:
-    """Get the station index, downloading if needed."""
+    """Get the station index, repairing or downloading it if needed.
+
+    A missing or invalid index is rebuilt from station files already on disk
+    when possible (no network); otherwise the database is downloaded.
+    """
     index_path = _get_index_path()
-    if index_path.exists():
-        try:
-            return json.loads(index_path.read_text())
-        except (json.JSONDecodeError, ValueError):
-            index_path.unlink(missing_ok=True)
+    index = load_valid_index(index_path)
+    if index is not None:
+        return index
+
+    index_path.unlink(missing_ok=True)
+    stations_dir = _get_stations_dir()
+    rebuilt = build_station_index(stations_dir)
+    if rebuilt:
+        index_path.write_text(json.dumps(rebuilt))
+        return rebuilt
 
     download_station_database()
-    return json.loads(index_path.read_text())
+    index = load_valid_index(index_path)
+    if index is None:
+        raise StationDatabaseError("Downloaded station database index is invalid")
+    return index

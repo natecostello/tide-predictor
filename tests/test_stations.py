@@ -187,7 +187,7 @@ class TestLoadStation:
 class TestGetStationIndex:
     def test_returns_cached_index(self, tmp_path):
         with patch("tides.stations._get_stations_dir", return_value=tmp_path):
-            index_data = [{"id": "1", "name": "Cached", "lat": 0, "lon": 0}]
+            index_data = [{"id": "1", "name": "Cached", "lat": 0, "lon": 0, "file": "noaa/1.json"}]
             (tmp_path / "station_index.json").write_text(json.dumps(index_data))
             result = get_station_index()
             assert result == index_data
@@ -195,7 +195,9 @@ class TestGetStationIndex:
     def test_downloads_when_no_index(self, tmp_path):
         with patch("tides.stations._get_stations_dir", return_value=tmp_path):
             with patch("tides.stations.download_station_database") as mock_dl:
-                index_data = [{"id": "2", "name": "Fresh"}]
+                index_data = [
+                    {"id": "2", "name": "Fresh", "lat": 0, "lon": 0, "file": "noaa/2.json"}
+                ]
 
                 def fake_download():
                     (tmp_path / "station_index.json").write_text(json.dumps(index_data))
@@ -209,7 +211,9 @@ class TestGetStationIndex:
         with patch("tides.stations._get_stations_dir", return_value=tmp_path):
             (tmp_path / "station_index.json").write_text("corrupt!")
             with patch("tides.stations.download_station_database") as mock_dl:
-                index_data = [{"id": "3", "name": "Redownloaded"}]
+                index_data = [
+                    {"id": "3", "name": "Redownloaded", "lat": 0, "lon": 0, "file": "noaa/3.json"}
+                ]
 
                 def fake_download():
                     (tmp_path / "station_index.json").write_text(json.dumps(index_data))

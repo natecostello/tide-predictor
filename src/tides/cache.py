@@ -237,21 +237,16 @@ def get_stations() -> list[dict]:
 
 def fetch_all() -> None:
     """Pre-fetch everything a query can need: NOAA list, station DB, GOT5.6."""
-    from tides.stations import _get_index_path, get_station_index
+    from tides.stations import _get_index_path, get_station_index, load_valid_index
 
     stations = fetch_station_data()
     print(f"NOAA station list: updated ({len(stations)} stations)", file=sys.stderr)
 
-    # Validate through get_station_index(): it repairs a missing or corrupt
-    # index (re-downloading) and only then may we report "already present".
-    index_path = _get_index_path()
-    was_valid = False
-    if index_path.exists():
-        try:
-            was_valid = isinstance(json.loads(index_path.read_text()), list)
-        except (json.JSONDecodeError, ValueError, OSError):
-            was_valid = False
-    get_station_index()  # downloads (and reports progress) only if needed
+    # get_station_index() validates the index and repairs (rebuilds from disk
+    # or re-downloads) a missing or invalid one; report "already present" only
+    # when the existing index was already valid.
+    was_valid = load_valid_index(_get_index_path()) is not None
+    get_station_index()
     if was_valid:
         print("Station database: already present", file=sys.stderr)
 

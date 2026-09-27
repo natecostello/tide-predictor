@@ -323,10 +323,49 @@ class TestFetchAll:
         assert "GOT5.6 model: already present" in err
         assert "Downloading" not in err
 
-    def test_corrupt_index_is_repaired_not_reported_present(self, tmp_path, capsys):
-        _, get_index, _ = self._run(True, True, tmp_path, content="{truncated")
-        get_index.assert_called_once()
+    @pytest.mark.parametrize("content", ["{truncated", "{}", '[{"id": "1"}]'])
+    def test_invalid_index_is_repaired_not_reported_present(self, tmp_path, capsys, content):
+        """Real get_station_index(): an invalid index (corrupt, wrong shape or
+        missing keys) triggers repair; only the download itself is mocked."""
+        stations_dir = tmp_path / "stations"
+        stations_dir.mkdir()
+        index = stations_dir / "station_index.json"
+        index.write_text(content)
+
+        def fake_download():
+            index.write_text(
+                json.dumps(
+                    [{"id": "9", "name": "x", "lat": 1.0, "lon": 2.0, "file": "noaa/9.json"}]
+                )
+            )
+
+        with (
+            patch("tides.cache.fetch_station_data", return_value=[]),
+            patch("tides.stations._get_stations_dir", return_value=stations_dir),
+            patch("tides.stations.download_station_database", side_effect=fake_download) as dl,
+            patch("tides.cache._model_exists", return_value=True),
+        ):
+            fetch_all()
+        dl.assert_called_once()
+        assert json.loads(index.read_text())[0]["id"] == "9"
         assert "Station database: already present" not in capsys.readouterr().err
+
+    def test_invalid_index_rebuilt_from_disk_without_download(self, tmp_path):
+        from tides.stations import get_station_index
+
+        stations_dir = tmp_path / "stations"
+        (stations_dir / "noaa").mkdir(parents=True)
+        (stations_dir / "noaa" / "5.json").write_text(
+            json.dumps({"name": "S", "latitude": 1.0, "longitude": 2.0})
+        )
+        (stations_dir / "station_index.json").write_text("{}")
+        with (
+            patch("tides.stations._get_stations_dir", return_value=stations_dir),
+            patch("tides.stations.download_station_database") as dl,
+        ):
+            index = get_station_index()
+        dl.assert_not_called()
+        assert index[0]["id"] == "5"
 
 
 class TestStaleStationCache:
