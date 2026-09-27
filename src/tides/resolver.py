@@ -219,42 +219,55 @@ def _apply_datum(
 ) -> TideResult:
     """Convert tide heights to the requested datum.
 
-    Station predictions arrive relative to chart_datum (LAT or MLLW).
+    Station predictions arrive relative to the station's chart datum (usually
+    LAT or MLLW), or MSL when that datum is not published relative to MSL
+    (datums.station_heights_datum).
     Model predictions arrive relative to MSL.
     NOAA predictions are requested in the target datum already (see
     _fetch_noaa_events) and are never shifted by model-derived datums.
     This function converts to the requested datum.
     """
-    from tides.datums import datums_from_station, get_model_datums
+    from tides.datums import (
+        DatumUnavailableError,
+        get_model_datums,
+        get_station_datums,
+        station_heights_datum,
+    )
 
     if result.source_type == Source.NOAA:
         # Official NOAA heights: already in the requested datum.
         result.datum = datum
         return result
 
-    # Determine current datum and get offset table
-    if result.source_type in (Source.STATION,) and station:
-        datum_offsets = datums_from_station(station)
-        current_datum = station.get("chart_datum", "MSL").lower()
+    if result.source_type == Source.STATION and station:
+        # Station path never uses model datums: published datums first, the
+        # rest computed from the station's own harmonics.
+        current_datum = station_heights_datum(station)
+        if datum == current_datum:
+            result.datum = datum
+            return result
+        datum_offsets = get_station_datums(
+            station, result.station_id or "", needed={current_datum, datum}
+        )
     else:
-        datum_offsets = None
         current_datum = "msl"
-
-    if datum == current_datum:
-        result.datum = datum
-        return result
-
-    if datum_offsets is None:
+        if datum == current_datum:
+            result.datum = datum
+            return result
         datum_offsets = get_model_datums(
             result.coordinate.lat,
             result.coordinate.lon,
             model_name,
         )
 
+    missing = {current_datum, datum} - datum_offsets.keys()
+    if missing:
+        raise DatumUnavailableError(
+            f"datum {', '.join(sorted(d.upper() for d in missing))} unavailable for this source"
+        )
+
     # Convert: height_target = height_current - (target_offset - current_offset)
-    current_offset = datum_offsets.get(current_datum, 0.0)
-    target_offset = datum_offsets.get(datum, 0.0)
-    shift = target_offset - current_offset
+    shift = datum_offsets[datum] - datum_offsets[current_datum]
 
     for day in result.days:
         for event in day.events:

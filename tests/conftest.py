@@ -49,10 +49,13 @@ def _stub_model_datums(
 ) -> None:
     if _is_integration(request):
         return
-    # Empty dict means subsequent .get(..., 0.0) calls in _apply_datum return
-    # zero offsets, so heights are not shifted. Tests that need specific
-    # datum behavior override this via @patch on the same target.
-    monkeypatch.setattr("tides.datums.get_model_datums", lambda *a, **kw: {})
+    # All-zero offsets for every supported datum: _apply_datum indexes the
+    # table strictly, and zero offsets leave heights unshifted. Tests that need
+    # specific datum behavior override this via @patch on the same target.
+    from tides.datums import SUPPORTED_DATUMS
+
+    zeros = dict.fromkeys(SUPPORTED_DATUMS, 0.0)
+    monkeypatch.setattr("tides.datums.get_model_datums", lambda *a, **kw: dict(zeros))
 
 
 class NetworkBlockedError(RuntimeError):

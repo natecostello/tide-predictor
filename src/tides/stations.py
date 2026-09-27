@@ -106,7 +106,10 @@ def predict_station_tides(
 ) -> list[TideEvent]:
     """Predict tides at a station using its harmonic constituents.
 
-    Heights are relative to the station's chart_datum.
+    Heights are relative to the station's chart_datum when that datum is a
+    supported one published relative to MSL; otherwise (e.g. a STND chart
+    datum with no published datums) they are MSL-relative. See
+    datums.station_heights_datum.
 
     Args:
         station: Full station data with harmonic_constituents and datums
@@ -114,23 +117,22 @@ def predict_station_tides(
         end_date: End date (inclusive)
 
     Returns:
-        List of TideEvent with heights relative to chart datum
+        List of TideEvent with heights in datums.station_heights_datum(station)
     """
     constituents = station.get("harmonic_constituents", [])
     if not constituents:
         return []
 
     # Apply chart datum offset so heights are relative to the station's
-    # published datum (usually LAT or MLLW)
-    datums = station.get("datums", {})
-    chart_datum = station.get("chart_datum", "MSL")
+    # published datum (usually LAT or MLLW). Our harmonic prediction oscillates
+    # around 0 ~= MSL, so height_CD = height_MSL - (CD - MSL). When the chart
+    # datum is not a supported datum published relative to MSL (e.g. STND with
+    # no datums), heights stay MSL-relative; see datums.station_heights_datum.
+    from tides.datums import datums_from_station, station_heights_datum
 
-    # Datums are all relative to STND (station datum = 0).
-    # Our harmonic prediction oscillates around 0 ~= MSL.
-    # To convert to chart datum: height_CD = height_MSL + (MSL - CD)
-    msl = datums.get("MSL", datums.get("MTL", 0.0))
-    cd = datums.get(chart_datum, msl)
-    datum_offset = msl - cd
+    heights_datum = station_heights_datum(station)
+    offsets = datums_from_station(station) or {}
+    datum_offset = -offsets.get(heights_datum, 0.0) if heights_datum != "msl" else 0.0
 
     all_events = []
     current = begin_date

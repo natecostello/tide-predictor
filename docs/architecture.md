@@ -58,7 +58,7 @@ NOAA predictions are the gold standard for US waters — they come from the agen
 
 Downloads the [openwatersio/tide-database](https://github.com/openwatersio/tide-database) (~8,289 stations from NOAA and TICON sources) as a GitHub zip archive. Each station is a JSON file with harmonic constituents, datum offsets, and metadata.
 
-`predict_station_tides()` calls into `harmonics.py` to generate predictions from the station's constituents, applying the chart datum offset so heights are relative to the station's published datum (LAT or MLLW).
+`predict_station_tides()` calls into `harmonics.py` to generate predictions from the station's constituents, applying the chart datum offset so heights are relative to the station's published datum (LAT or MLLW). When the chart datum is not published relative to MSL (e.g. STND with no datums), heights stay MSL-relative (`datums.station_heights_datum`).
 
 ### harmonics.py — Harmonic prediction engine
 
@@ -88,7 +88,7 @@ Steps 1-3 live in `load_local_constituents()`, shared with `datums.py` and cache
 
 ### datums.py — Tidal datum computation
 
-Tidal datums (LAT, MLLW, MLW, MSL, MTL, MHW, MHHW, HAT) are statistical properties of the tidal signal over a 19-year nodal cycle. Two sources:
+Tidal datums (LAT, MLLW, MLW, MSL, MTL, MHW, MHHW, HAT) are statistical properties of the tidal signal over a 19-year nodal cycle. Three sources:
 
 1. **Station-published datums**: Available in ticon station files (all 4,838 stations) and some NOAA stations (1,210 of 3,451). Read directly from the station JSON.
 
@@ -98,7 +98,9 @@ Tidal datums (LAT, MLLW, MLW, MSL, MTL, MHW, MHHW, HAT) are statistical properti
    - MHW/MLW: mean of all highs / all lows
    - MTL: (MHW + MLW) / 2
 
-Computed datums are cached at `~/.cache/tides/datums/{model}.v2.json` (the version is bumped whenever computed values change; older files are left unused), keyed by coordinate rounded to model grid resolution. Computation takes ~5 seconds per point on GOT5.6; cached lookups are instant.
+Computed datums are cached at `~/.cache/tides/datums/{model}.v3.json` (the version is bumped whenever computed values or keys change; older files are left unused), keyed by the query point rounded to 0.01 deg (~1 km) so distinct points never share an entry. Only all-finite datum sets are cached: a point with no model data (e.g. >10 km inland of the model's wet cells) raises `DatumUnavailableError` (CLI exit 2) instead of producing NaN or 0.0 datums. Computation takes ~5 seconds per point on GOT5.6; cached lookups are instant.
+
+3. **Station datums the station does not publish**: the station path never uses model datums. Published datums always win; any datum the station lacks (including its chart datum, e.g. STND with no published datums) is computed from the station's own harmonics with the same 19-year, 6-minute method and cached per station id in `datums/stations.v1.json`. A station with neither the datum nor harmonics is an error (exit 2), never a silent MSL substitution. When a station's chart datum is not published relative to MSL, its predictions stay MSL-relative (`datums.station_heights_datum`).
 
 ### cache.py — Cache management
 
@@ -136,9 +138,10 @@ Wraps `timezonefinder` to map coordinates to IANA timezone names, used by `--loc
 │   ├── ticon/*.json                     4,838 TICON stations
 │   └── station_index.json               Searchable index
 └── datums/                              Computed datum offsets (versioned; older files unused)
-    ├── got5.6.v2.json                   Cached per model, per point
-    ├── fes2022.v2.json
-    └── eot20.v2.json
+    ├── got5.6.v3.json                   Cached per model, per point (0.01 deg key)
+    ├── fes2022.v3.json
+    ├── eot20.v3.json
+    └── stations.v1.json                 Station datums computed from harmonics, per station id
 
 ~/Library/Caches/pytmd/                  Model cache (platformdirs)
 ├── GOT5.5/                              694 MB (dependency of GOT5.6)
