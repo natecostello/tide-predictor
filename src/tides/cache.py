@@ -184,21 +184,23 @@ def _fetch_eot20() -> None:
                 print(file=sys.stderr)
 
         print("Extracting...", file=sys.stderr)
-        with zipfile.ZipFile(tmp_path) as zf:
-            zf.extractall(data_dir)
+        # Extract into a fresh staging dir so leftovers from a failed attempt
+        # (e.g. stale inner zips in data_dir) can never satisfy the checks.
+        with tempfile.TemporaryDirectory(dir=data_dir, prefix=".eot20-staging-") as staging:
+            staging_dir = Path(staging)
+            with zipfile.ZipFile(tmp_path) as zf:
+                zf.extractall(staging_dir)
 
-        # SEANOE archive contains inner ZIPs (ocean_tides.zip, load_tides.zip)
-        eot_base.mkdir(exist_ok=True)
-        inner_names = ["ocean_tides.zip", "load_tides.zip"]
-        missing = [n for n in inner_names if not (data_dir / n).exists()]
-        if missing:
-            # A truncated or malformed download: never mark it complete.
-            raise OSError(f"EOT20 archive is incomplete (missing {', '.join(missing)})")
-        for inner_name in inner_names:
-            inner_path = data_dir / inner_name
-            with zipfile.ZipFile(inner_path) as inner_zf:
-                inner_zf.extractall(eot_base)
-            inner_path.unlink()
+            # SEANOE archive contains inner ZIPs (ocean_tides.zip, load_tides.zip)
+            inner_names = ["ocean_tides.zip", "load_tides.zip"]
+            missing = [n for n in inner_names if not (staging_dir / n).exists()]
+            if missing:
+                # A truncated or malformed download: never mark it complete.
+                raise OSError(f"EOT20 archive is incomplete (missing {', '.join(missing)})")
+            eot_base.mkdir(exist_ok=True)
+            for inner_name in inner_names:
+                with zipfile.ZipFile(staging_dir / inner_name) as inner_zf:
+                    inner_zf.extractall(eot_base)
 
         (eot_base / EOT20_COMPLETE_MARKER).write_text("ok\n")
         print("EOT20 download complete.", file=sys.stderr)

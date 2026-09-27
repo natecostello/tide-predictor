@@ -676,10 +676,15 @@ class TestEot20Marker:
             def __exit__(self, *a):
                 return False
 
+        # A stale inner archive left over from an earlier failed attempt must
+        # not satisfy the check for the new download.
+        pytmd.mkdir(parents=True, exist_ok=True)
+        (pytmd / "load_tides.zip").write_bytes(b"stale")
         with patch("httpx.stream", return_value=FakeStream()):
             with pytest.raises(OSError, match="load_tides.zip"):
                 cache._fetch_eot20()
         assert not (pytmd / "EOT20" / cache.EOT20_COMPLETE_MARKER).exists()
+        assert not list(pytmd.glob(".eot20-staging-*"))  # staging cleaned up
 
 
 class TestNetworkGuard:
