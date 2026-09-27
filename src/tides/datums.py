@@ -23,7 +23,8 @@ _DATUM_EPOCH_END = datetime.date(2022, 1, 1)
 DATUM_CACHE_VERSION = 3
 
 # Version of the per-station computed-datum cache (datums/stations.vN.json).
-STATION_DATUM_CACHE_VERSION = 1
+# v2: station predictions switched to GOT corrections without infer_minor (#15).
+STATION_DATUM_CACHE_VERSION = 2
 
 # Datum cache keys are the query point rounded to this many degrees (~1 km),
 # independent of model grid resolution.
