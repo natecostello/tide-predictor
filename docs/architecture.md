@@ -147,7 +147,7 @@ Wraps `timezonefinder` to map coordinates to IANA timezone names, used by `--loc
 
 ## Testing
 
-228 tests, 90% coverage. Unit tests mock all network and pyTMD calls. Integration tests (7, deselected by default) hit real NOAA API and load real model data.
+Unit tests are isolated by autouse fixtures in `tests/conftest.py`: `HOME`/`XDG_CACHE_HOME` point at a per-test `tmp_path`, `get_model_datums` is stubbed, and outbound (non-AF_UNIX) socket connections raise `NetworkBlockedError`, so an unmocked network call fails loudly instead of reaching the network. Integration tests (deselected by default) opt out of these fixtures, run the working tree via `python -m tides`, hit the real NOAA API and load real model data.
 
 ```
 uv run pytest                    # unit tests only (default)

@@ -5,6 +5,7 @@ Run with: pytest tests/test_integration.py -v -m integration
 
 import json
 import subprocess
+import sys
 
 import pytest
 
@@ -15,9 +16,11 @@ SUBPROCESS_TIMEOUT = 60
 
 class TestNOAAIntegration:
     def test_battery_ny(self):
-        """The Battery, NY — a well-known NOAA station."""
+        """The Battery, NY -- a well-known NOAA station."""
         result = subprocess.run(
             [
+                sys.executable,
+                "-m",
                 "tides",
                 "get",
                 "40.7006,-74.0142",
@@ -40,6 +43,8 @@ class TestNOAAIntegration:
     def test_battery_verbose(self):
         result = subprocess.run(
             [
+                sys.executable,
+                "-m",
                 "tides",
                 "get",
                 "40.7006,-74.0142",
@@ -59,9 +64,11 @@ class TestNOAAIntegration:
 
 class TestModelIntegration:
     def test_brazil_coast(self):
-        """NE Brazil coast — no NOAA station, forces model."""
+        """NE Brazil coast -- no NOAA station, forces model."""
         result = subprocess.run(
             [
+                sys.executable,
+                "-m",
                 "tides",
                 "get",
                 "-8.05,-34.87",
@@ -86,6 +93,8 @@ class TestCLIFlags:
     def test_local_time(self):
         result = subprocess.run(
             [
+                sys.executable,
+                "-m",
                 "tides",
                 "get",
                 "40.7006,-74.0142",
@@ -107,6 +116,8 @@ class TestCLIFlags:
     def test_feet(self):
         result = subprocess.run(
             [
+                sys.executable,
+                "-m",
                 "tides",
                 "get",
                 "40.7006,-74.0142",
@@ -126,6 +137,8 @@ class TestCLIFlags:
     def test_date_range(self):
         result = subprocess.run(
             [
+                sys.executable,
+                "-m",
                 "tides",
                 "get",
                 "40.7006,-74.0142",
@@ -144,7 +157,7 @@ class TestCLIFlags:
 
     def test_version(self):
         result = subprocess.run(
-            ["tides", "--version"],
+            [sys.executable, "-m", "tides", "--version"],
             capture_output=True,
             text=True,
             timeout=SUBPROCESS_TIMEOUT,

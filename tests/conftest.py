@@ -8,12 +8,16 @@ cache; on a fresh CI runner with no cache, the same code paths reach out
 to NASA endpoints and fail when network is unreachable.
 
 The autouse fixtures below redirect HOME / XDG_CACHE_HOME to a per-test
-tmp directory, and stub `get_model_datums` so unit tests cannot trigger
-the "download GOT5.6 to compute datum offsets" path.
+tmp directory, stub `get_model_datums` so unit tests cannot trigger
+the "download GOT5.6 to compute datum offsets" path, and block outbound
+socket connections so any unmocked network call fails loudly with
+NetworkBlockedError.
 
-Integration tests (`@pytest.mark.integration`) opt out — they need the
+Integration tests (`@pytest.mark.integration`) opt out -- they need the
 real cache and network.
 """
+
+import socket
 
 import pytest
 
@@ -49,3 +53,41 @@ def _stub_model_datums(
     # zero offsets, so heights are not shifted. Tests that need specific
     # datum behavior override this via @patch on the same target.
     monkeypatch.setattr("tides.datums.get_model_datums", lambda *a, **kw: {})
+
+
+class NetworkBlockedError(RuntimeError):
+    """Raised when a unit test attempts a real network connection.
+
+    A RuntimeError subclass (not OSError) so httpx/httpcore do not remap it
+    into a ConnectError that production code might catch and swallow.
+    """
+
+
+@pytest.fixture(autouse=True)
+def _block_network(
+    request: pytest.FixtureRequest,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    if _is_integration(request):
+        return
+
+    real_connect = socket.socket.connect
+    real_connect_ex = socket.socket.connect_ex
+    unix_family = getattr(socket, "AF_UNIX", None)
+
+    def _blocked(address):
+        return NetworkBlockedError(f"network access blocked in unit tests: {address!r}")
+
+    def guarded_connect(self, address):
+        if self.family == unix_family:
+            return real_connect(self, address)
+        raise _blocked(address)
+
+    def guarded_connect_ex(self, address):
+        # connect_ex returns an errno int; keep that contract for AF_UNIX.
+        if self.family == unix_family:
+            return real_connect_ex(self, address)
+        raise _blocked(address)
+
+    monkeypatch.setattr(socket.socket, "connect", guarded_connect)
+    monkeypatch.setattr(socket.socket, "connect_ex", guarded_connect_ex)

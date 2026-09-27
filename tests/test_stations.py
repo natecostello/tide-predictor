@@ -94,7 +94,7 @@ class TestPredictStationTides:
         assert all(isinstance(e, TideEvent) for e in events)
 
     def test_events_use_chart_datum(self):
-        """Station's chart_datum is LAT — heights should be relative to LAT."""
+        """Station's chart_datum is LAT -- heights should be relative to LAT."""
         events = predict_station_tides(
             SAMPLE_STATION,
             datetime.date(2026, 4, 15),
@@ -114,7 +114,7 @@ class TestPredictStationTides:
         assert len(events) >= 6
 
     def test_fortaleza_amplitude_realistic(self):
-        """Fortaleza has ~2m tidal range — heights should reflect this."""
+        """Fortaleza has ~2m tidal range -- heights should reflect this."""
         events = predict_station_tides(
             SAMPLE_STATION,
             datetime.date(2026, 4, 15),

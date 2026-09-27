@@ -122,17 +122,17 @@ class TestExtractDatums:
 class TestGridKey:
     def test_got56_resolution(self):
         key = _grid_key(40.7, -74.0, "GOT5.6")
-        # 0.5° grid: 40.7 rounds to 40.5, -74.0 stays
+        # 0.5 deg grid: 40.7 rounds to 40.5, -74.0 stays
         assert key == "40.5,-74.0"
 
     def test_fes2022_resolution(self):
         key = _grid_key(40.7, -74.0, "FES2022")
-        # 1/16° = 0.0625: 40.7/0.0625 = 651.2, round to 651 * 0.0625 = 40.6875
+        # 1/16 deg = 0.0625: 40.7/0.0625 = 651.2, round to 651 * 0.0625 = 40.6875
         assert "40.6875" in key
 
     def test_eot20_resolution(self):
         key = _grid_key(40.7, -74.0, "EOT20")
-        # 0.125° grid: 40.7/0.125 = 325.6, round to 326 * 0.125 = 40.75
+        # 0.125 deg grid: 40.7/0.125 = 325.6, round to 326 * 0.125 = 40.75
         assert "40.75" in key
 
 

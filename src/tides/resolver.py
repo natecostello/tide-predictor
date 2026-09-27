@@ -112,7 +112,7 @@ def _resolve_model(
     events = compute_tides(coord, begin_date, end_date, model_name=model_name)
     if not events:
         print(
-            "Error: No tidal data for this location — it may be inland.",
+            "Error: No tidal data for this location -- it may be inland.",
             file=sys.stderr,
         )
         raise SystemExit(2)

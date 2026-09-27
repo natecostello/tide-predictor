@@ -1,7 +1,7 @@
 """Tidal harmonic prediction from station constituent data.
 
 Constructs an xarray Dataset from station harmonic constituents and
-predicts water levels using pyTMD's predict.time_series() — the same
+predicts water levels using pyTMD's predict.time_series() -- the same
 pipeline used by the gridded model path (ocean_model.py).
 """
 

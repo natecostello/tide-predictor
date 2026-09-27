@@ -126,7 +126,7 @@ def predict_station_tides(
     chart_datum = station.get("chart_datum", "MSL")
 
     # Datums are all relative to STND (station datum = 0).
-    # Our harmonic prediction oscillates around 0 ≈ MSL.
+    # Our harmonic prediction oscillates around 0 ~= MSL.
     # To convert to chart datum: height_CD = height_MSL + (MSL - CD)
     msl = datums.get("MSL", datums.get("MTL", 0.0))
     cd = datums.get(chart_datum, msl)
