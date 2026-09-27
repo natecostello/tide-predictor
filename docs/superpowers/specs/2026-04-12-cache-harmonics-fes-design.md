@@ -19,8 +19,9 @@ New Typer sub-app at `tides cache` with two commands:
 - `--json` flag for machine-readable output
 
 **`tides cache clear [name]`**:
-- No argument: clears everything (both caches), with confirmation prompt
-- `name` argument: clears specific item (`stations`, `got5.5`, `got5.6`, `eot20`, `fes2022`, `hamtide11`)
+- No argument: clears the app cache plus the auto-downloaded GOT5.5/GOT5.6 only (originally "everything, both caches" -- changed by #17, see amendment below), with a confirmation prompt listing each item
+- `name` argument: clears specific item (`stations`, `datums`, `got5.5`, `got5.6`, `eot20`, `fes2022`, `hamtide11`)
+- `--all`/`-a`: with no name, also clears EOT20, FES2022 and HAMTIDE11
 - `--yes` flag to skip confirmation
 - Reports bytes freed
 
@@ -28,7 +29,8 @@ New Typer sub-app at `tides cache` with two commands:
 
 ### Files Changed
 - `src/tides/cli.py` — add `cache_app` Typer sub-app
-- `src/tides/cache.py` — add `get_cache_info()`, `clear_cache()`, `format_size()` functions
+- `src/tides/cache.py` — add `get_cache_info()`, `clear_cache()`, `plan_clear()` (#17), `format_size()`, `atomic_write_text()` (#17) functions
+- `src/tides/datums.py`, `src/tides/stations.py` — write cache/index files via `atomic_write_text()` (#17)
 
 ## 2. Replace Hand-Rolled Harmonics with pyTMD
 

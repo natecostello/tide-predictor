@@ -529,6 +529,7 @@ def cache_clear(
     all_models: bool = typer.Option(
         False,
         "--all",
+        "-a",
         help="With no name, also clear EOT20 and manually downloaded models (FES2022, HAMTIDE11)",
     ),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt"),

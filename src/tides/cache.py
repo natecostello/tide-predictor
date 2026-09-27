@@ -114,8 +114,9 @@ def _model_exists(model_name: str) -> bool:
 def _get_pytmd_data_dir() -> Path:
     """pyTMD's real data directory (platformdirs cache).
 
-    Used by every model fetch/marker path, so downloads always land where
-    pyTMD looks for them.
+    Used by EOT20's fetch/marker paths so they land where pyTMD looks. GOT
+    fetches call pyTMD's own fetch_gsfc_got() directly and rely on its
+    internal default, which is this same directory.
     """
     import platformdirs
 
