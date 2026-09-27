@@ -207,3 +207,23 @@ class TestAutoFallthrough:
     def test_noaa_source_network_error_propagates(self, *_):
         with pytest.raises(httpx.ConnectError):
             resolve_tides(BATTERY, DAY, DAY, Source.NOAA, datum="mllw")
+
+
+class TestNoaaCli:
+    """User-facing --source noaa path: exit code and actionable message."""
+
+    @patch("tides.resolver.fetch_predictions")
+    @patch("tides.resolver.get_stations", return_value=[SUB_STATION])
+    def test_subordinate_non_mllw_exits_2_with_message(self, _stations, mock_fetch):
+        from typer.testing import CliRunner
+
+        from tides.cli import app
+
+        result = CliRunner().invoke(
+            app, ["get", "40.7128,-74.0060", "--source", "noaa", "--datum", "msl"]
+        )
+        assert result.exit_code == 2
+        assert "Error:" in result.output
+        assert "8652226" in result.output
+        assert "only publishes MLLW" in result.output
+        mock_fetch.assert_not_called()
