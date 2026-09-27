@@ -81,7 +81,7 @@ negative-coordinate tokens so Click does not parse them as option flags.
 
 ## Data Sources
 
-**NOAA CO-OPS** (US waters): Uses official tide station predictions. Auto-selected when a station is within 25km of the coordinates.
+**NOAA CO-OPS** (US waters): Uses official tide station predictions. Auto-selected when a station is within 25km of the coordinates. Heights are NOAA's own published values in the requested datum. NOAA subordinate stations publish MLLW only; for other datums, `auto` mode falls through to the station database or model (with a note on stderr), and `--source noaa` reports an error.
 
 **GOT5.6** (global, default): NASA Goddard Ocean Tide model at 0.5° resolution. Used as fallback for locations outside NOAA coverage. Model data is auto-downloaded on first use.
 

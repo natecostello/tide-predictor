@@ -8,6 +8,15 @@ from tides.models import Coordinate, TideEvent
 
 STATIONS_URL = "https://api.tidesandcurrents.noaa.gov/mdapi/prod/webapi/stations.xml?type=tidepredictions&units=metric"
 PREDICTIONS_URL = "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter"
+STATION_DATUMS_URL = (
+    "https://api.tidesandcurrents.noaa.gov/mdapi/prod/webapi/stations/{station_id}/datums.json"
+)
+
+# Datums the predictions API serves directly at reference ("R") stations.
+# Subordinate ("S") stations only serve MLLW. LAT/HAT are never served by the
+# predictions API; they are derived from the station's published datums.
+NATIVE_DATUMS = ("mllw", "mlw", "msl", "mtl", "mhw", "mhhw")
+DERIVED_DATUMS = ("lat", "hat")
 
 REQUEST_TIMEOUT = 30.0
 
@@ -28,15 +37,18 @@ def parse_station_list(xml_text: str) -> list[dict]:
         name_el = station_el.find("name")
         lat_el = station_el.find("lat")
         lng_el = station_el.find("lng")
+        type_el = station_el.find("type")
         if id_el is not None and name_el is not None and lat_el is not None and lng_el is not None:
-            stations.append(
-                {
-                    "id": id_el.text,
-                    "name": name_el.text,
-                    "lat": float(lat_el.text),
-                    "lon": float(lng_el.text),
-                }
-            )
+            station = {
+                "id": id_el.text,
+                "name": name_el.text,
+                "lat": float(lat_el.text),
+                "lon": float(lng_el.text),
+            }
+            # "R" = reference (harmonic) station, "S" = subordinate station.
+            if type_el is not None and type_el.text:
+                station["type"] = type_el.text.strip().upper()
+            stations.append(station)
     return stations
 
 
@@ -72,13 +84,14 @@ def fetch_predictions(
     station_id: str,
     begin_date: datetime.date,
     end_date: datetime.date,
+    datum: str = "mllw",
 ) -> dict:
     params = {
         "begin_date": begin_date.strftime("%Y%m%d"),
         "end_date": end_date.strftime("%Y%m%d"),
         "station": station_id,
         "product": "predictions",
-        "datum": "MTL",
+        "datum": datum.upper(),
         "units": "metric",
         "time_zone": "gmt",
         "interval": "hilo",
@@ -92,6 +105,41 @@ def fetch_predictions(
 
 class NOAAError(Exception):
     pass
+
+
+class NOAADatumUnavailableError(NOAAError):
+    """The chosen NOAA station does not publish the requested datum."""
+
+
+def fetch_station_datums(station_id: str) -> dict[str, float]:
+    """Fetch a station's published datums (meters, relative to STND).
+
+    Returns a dict keyed by upper-case datum name (e.g. "MLLW", "LAT", "HAT").
+    LAT/HAT come from the top-level fields of NOAA's datums.json and are only
+    present when NOAA publishes them (reference stations). Raises NOAAError when
+    the station publishes no datums at all (e.g. subordinate stations).
+    """
+    response = httpx.get(
+        STATION_DATUMS_URL.format(station_id=station_id),
+        params={"units": "metric"},
+        timeout=REQUEST_TIMEOUT,
+    )
+    response.raise_for_status()
+    data = response.json()
+
+    entries = data.get("datums")
+    if not entries:
+        raise NOAAError(f"NOAA publishes no datums for station {station_id}.")
+
+    datums: dict[str, float] = {}
+    for entry in entries:
+        name, value = entry.get("name"), entry.get("value")
+        if name and value is not None:
+            datums[name.upper()] = float(value)
+    for key in ("LAT", "HAT"):
+        if data.get(key) is not None:
+            datums[key] = float(data[key])
+    return datums
 
 
 def parse_predictions_response(data: dict) -> list[TideEvent]:

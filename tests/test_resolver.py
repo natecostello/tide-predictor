@@ -417,20 +417,10 @@ class TestApplyDatum:
         assert abs(out.days[0].events[0].height - 1.8) < 0.001
         assert out.datum == "mllw"
 
-    @patch("tides.datums.get_model_datums")
-    def test_noaa_uses_mtl_as_current_datum(self, mock_datums):
-        """NOAA predictions are relative to MTL. Converting to MLLW should
-        use the correct offset from MTL, not from MSL."""
-        mock_datums.return_value = {
-            "lat": -1.6,
-            "mllw": -0.9,
-            "mlw": -0.7,
-            "msl": 0.0,
-            "mtl": -0.01,
-            "mhw": 0.7,
-            "mhhw": 0.9,
-            "hat": 1.6,
-        }
+    @patch("tides.datums.get_model_datums", side_effect=AssertionError("must not be called"))
+    def test_noaa_result_passes_through_untouched(self, mock_datums):
+        """NOAA heights arrive in the requested datum; never shift them by
+        model-derived datums (#12)."""
         result = TideResult(
             coordinate=Coordinate(lat=40.7, lon=-74.0),
             source_type=Source.NOAA,
@@ -446,17 +436,16 @@ class TestApplyDatum:
                             time=datetime.datetime(
                                 2026, 4, 15, 12, 0, tzinfo=datetime.timezone.utc
                             ),
-                            height=0.5,  # relative to MTL
+                            height=0.5,
                         )
                     ],
                 )
             ],
         )
         out = _apply_datum(result, "mllw", "GOT5.6")
-        # current=mtl=-0.01, target=mllw=-0.9, shift = -0.9 - (-0.01) = -0.89
-        # height_mllw = 0.5 - (-0.89) = 1.39
-        assert abs(out.days[0].events[0].height - 1.39) < 0.001
+        assert out.days[0].events[0].height == 0.5
         assert out.datum == "mllw"
+        mock_datums.assert_not_called()
 
 
 class TestAutoResolution:
