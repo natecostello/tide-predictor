@@ -36,10 +36,26 @@ class TestParseCoordinate:
         assert c.lat == pytest.approx(40.7128)
         assert c.lon == pytest.approx(-74.0060)
 
-    def test_two_positional_args(self):
-        c = parse_coordinate(["40.7128", "-74.0060"])
+    def test_space_separated_single_token(self):
+        c = parse_coordinate(["40.7128 -74.0060"])
         assert c.lat == pytest.approx(40.7128)
         assert c.lon == pytest.approx(-74.0060)
+
+    @patch("tides.resolver.resolve_tides")
+    def test_space_separated_via_cli(self, mock_resolve):
+        mock_resolve.return_value = TideResult(
+            coordinate=Coordinate(lat=40.7, lon=-74.0),
+            source_type=Source.MODEL,
+            station_id=None,
+            station_name=None,
+            station_distance_km=None,
+            model_name="GOT5.6",
+            days=[],
+        )
+        result = runner.invoke(app, ["get", "40.7 -74.0", "-d", "2026-09-28"])
+        assert result.exit_code == 0
+        coord = mock_resolve.call_args.args[0]
+        assert (coord.lat, coord.lon) == (40.7, -74.0)
 
     def test_invalid_single_arg(self):
         with pytest.raises(SystemExit):
@@ -297,9 +313,23 @@ class TestParseCoordinateEdgeCases:
 
 
 class TestParseBetweenValidation:
-    def test_end_before_start(self):
-        with pytest.raises(SystemExit):
-            parse_between("18:00:06:00")
+    def test_end_before_start_wraps_midnight(self):
+        from tides.cli import _in_window
+
+        window = parse_between("20:00:04:00")
+        assert window == (datetime.time(20, 0), datetime.time(4, 0))
+        assert _in_window(datetime.time(23, 30), window)
+        assert _in_window(datetime.time(0, 0), window)
+        assert _in_window(datetime.time(4, 0), window)
+        assert not _in_window(datetime.time(12, 0), window)
+        assert not _in_window(datetime.time(19, 59), window)
+
+    def test_equal_start_end_is_single_minute(self):
+        from tides.cli import _in_window
+
+        window = parse_between("06:00:06:00")
+        assert _in_window(datetime.time(6, 0), window)
+        assert not _in_window(datetime.time(6, 1), window)
 
     def test_three_colons(self):
         with pytest.raises(SystemExit):
@@ -418,10 +448,31 @@ class TestCLIInvocation:
         assert result.exit_code == 0
         assert f"tides {version('tides')}" in result.output
 
-    def test_no_args_shows_usage_error(self):
+    def test_no_args_shows_help(self):
         result = runner.invoke(app, [])
-        assert result.exit_code == 2
-        assert "Missing command" in result.output
+        assert "Usage" in result.output
+        assert "Missing command" not in result.output
+
+    @pytest.mark.parametrize("argv", [["-h"], ["get", "-h"], ["cache", "-h"], ["--help"]])
+    def test_short_help_flag(self, argv):
+        result = runner.invoke(app, argv)
+        assert result.exit_code == 0
+        assert "Usage" in result.output
+
+    @patch("tides.cache.get_cache_info")
+    def test_bare_cache_still_shows_info(self, mock_info):
+        mock_info.return_value = {
+            "app_cache": {"path": "/fake", "items": []},
+            "model_cache": {"path": "/fake", "items": []},
+        }
+        result = runner.invoke(app, ["cache"])
+        assert result.exit_code == 0
+        assert "App cache" in result.output
+
+    def test_help_lists_choices(self):
+        result = runner.invoke(app, ["get", "--help"])
+        for word in ("got5.5", "got5.6", "eot20", "fes2022", "mhhw", "station"):
+            assert word in result.output
 
     def test_invalid_source(self):
         result = runner.invoke(app, ["get", "40.7,-74.0", "--source", "invalid"])
@@ -661,3 +712,58 @@ class TestCacheClearCommand:
         result = runner.invoke(app, ["cache", "clear", "got5.6", "--yes"])
         assert result.exit_code == 2
         assert "Permission denied" in result.output
+
+
+class TestModelIgnoredNote:
+    def _station_result(self):
+        return TideResult(
+            coordinate=Coordinate(lat=-3.0, lon=-39.6),
+            source_type=Source.STATION,
+            station_id="fort",
+            station_name="Fortaleza USCGS",
+            station_distance_km=150.0,
+            model_name=None,
+            days=[],
+        )
+
+    @patch("tides.resolver.resolve_tides")
+    def test_note_when_explicit_model_unused(self, mock_resolve):
+        mock_resolve.return_value = self._station_result()
+        result = runner.invoke(app, ["get", "3.0,-39.6", "-m", "fes2022"])
+        assert result.exit_code == 0
+        assert "Note: --model FES2022 ignored" in result.stderr
+        assert "station 'Fortaleza USCGS'" in result.stderr
+        assert "Note" not in result.stdout
+
+    @patch("tides.resolver.resolve_tides")
+    def test_no_note_without_explicit_model(self, mock_resolve):
+        mock_resolve.return_value = self._station_result()
+        result = runner.invoke(app, ["get", "3.0,-39.6"])
+        assert "ignored" not in result.stderr
+
+    @patch("tides.resolver.resolve_tides")
+    def test_default_model_is_got56(self, mock_resolve):
+        mock_resolve.return_value = self._station_result()
+        runner.invoke(app, ["get", "3.0,-39.6"])
+        assert mock_resolve.call_args.kwargs["model_name"] == "GOT5.6"
+
+
+class TestDateRangeLimit:
+    def test_366_days_accepted(self):
+        begin, end = parse_date_arg("2026-01-01:2027-01-01")
+        assert (end - begin).days + 1 == 366
+
+    def test_367_days_rejected(self, capsys):
+        with pytest.raises(SystemExit) as exc:
+            parse_date_arg("2026-01-01:2027-01-02")
+        assert exc.value.code == 1
+        assert "date range too long (367 days); maximum is 366" in capsys.readouterr().err
+
+
+class TestNegativeCoordEscaping:
+    def test_space_form_escaped(self):
+        from tides.cli import _escape_negative_coords
+
+        assert _escape_negative_coords(["get", "-2.88 -39.91"]) == ["get", " -2.88 -39.91"]
+        assert _escape_negative_coords(["get", "-2.88,-39.91"]) == ["get", " -2.88,-39.91"]
+        assert _escape_negative_coords(["-p", "3"]) == ["-p", "3"]

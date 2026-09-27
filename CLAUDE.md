@@ -14,14 +14,16 @@ A stateless CLI for tide predictions using NOAA station data and global tidal mo
 ## CLI Interface
 
 ```
-tides get <lat,lon> [--date DATE] [--local] [--feet] [--json] [--between HH:MM:HH:MM] [--precision N] [--source auto|noaa|station|model] [--model got5.6|eot20|fes2022] [--datum mllw|mlw|msl|mtl|mhw|mhhw|lat|hat] [--verbose]
+tides get <lat,lon> [--date DATE] [--local] [--feet] [--json] [--between HH:MM:HH:MM] [--precision N] [--source auto|noaa|station|model] [--model got5.6|got5.5|eot20|fes2022] [--datum mllw|mlw|msl|mtl|mhw|mhhw|lat|hat] [--verbose]
 tides cache [--json]
 tides cache clear [stations|datums|got5.5|got5.6|eot20|fes2022|hamtide11] [--all|-a] [--yes]
 tides fetch-model
 tides --version
 ```
 
-Coordinate accepts comma-separated form: `lat,lon` (e.g. `40.7128,-74.0060`).
+Coordinate accepts `lat,lon` (e.g. `40.7128,-74.0060`) or a single quoted token `"lat lon"`.
+`--date` ranges are limited to 366 days (inclusive). `-h`/`--help` work everywhere; bare
+`tides` shows help (bare `tides cache` still shows cache info).
 Negative latitudes work directly (e.g. `tides get -2.88,-39.91`): the
 `main_entry` console script prepends a space to any bare `-lat,lon` token
 in `sys.argv` before invoking Typer, so Click does not parse it as an
