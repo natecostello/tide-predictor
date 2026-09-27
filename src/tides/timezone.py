@@ -27,6 +27,11 @@ def to_local_time(utc_time: datetime.datetime, coord: Coordinate) -> datetime.da
 
 
 def get_zoneinfo(coord: Coordinate) -> datetime.tzinfo:
-    """The coordinate's local timezone, or UTC when none is known (open ocean)."""
+    """The coordinate's local timezone, or UTC when none is known.
+
+    Open-ocean points resolve to timezonefinder's nautical Etc/GMT+-N zones,
+    which are used as-is (consistently for grouping, default date and
+    display); UTC is only the fallback when no zone is returned at all.
+    """
     tz_name = get_timezone_name(coord)
     return ZoneInfo(tz_name) if tz_name else datetime.timezone.utc

@@ -68,7 +68,7 @@ negative-coordinate tokens so Click does not parse them as option flags.
 | Flag | Short | Description |
 |------|-------|-------------|
 | `--date` | `-d` | Date or range (YYYY-MM-DD or YYYY-MM-DD:YYYY-MM-DD) |
-| `--local` | `-l` | Times in local timezone at coordinates. Days, `--date` bounds and the default "today" all follow the local clock (UTC where no timezone is known, e.g. open ocean) |
+| `--local` | `-l` | Times in local timezone at coordinates. Days, `--date` bounds and the default "today" all follow the local clock (open-ocean points use their nautical `Etc/GMT` zone; UTC only if no zone is known at all) |
 | `--feet` | `-f` | Heights in feet (default: meters) |
 | `--json` | `-j` | JSON output |
 | `--between` | `-b` | Time window filter (HH:MM:HH:MM) |
