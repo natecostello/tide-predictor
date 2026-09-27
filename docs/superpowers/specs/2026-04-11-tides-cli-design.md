@@ -24,7 +24,7 @@ The coordinate is the primary positional argument. The parser accepts these form
 
 Order is always `latitude, longitude`. (Amended 2026-09-27, #18: the coordinate is a single argument, `lat,lon` or quoted `"lat lon"`; a bare negative latitude such as `-2.88,-39.91` or `"-2.88 -39.91"` is accepted directly.)
 
-Note: negative longitudes (e.g. `-74.0060`) may be interpreted as flags by the shell or Typer. The CLI should use Typer's `click.Context` settings to allow interspersed args, and document that `--` can be used to disambiguate if needed (e.g. `tides -- 40.7128 -74.0060`). The comma-separated form avoids this issue entirely.
+Note: a token starting with `-` may be interpreted as a flag by Click. The comma form (`40.7128,-74.0060`) and the quoted form (`"40.7128 -74.0060"`) keep the coordinate a single argument; a leading negative latitude (`-2.88,-39.91`, `"-2.88 -39.91"`) is escaped by the `main_entry` wrapper. (Amended 2026-09-27, #18: the original suggestion `tides -- 40.7128 -74.0060` passes two arguments and is not supported.)
 
 ### Date
 
