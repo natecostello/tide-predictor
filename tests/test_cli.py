@@ -383,6 +383,30 @@ class TestFormatPlainBetweenFilter:
 
 
 class TestFormatJsonBetweenFilter:
+    def test_between_wraps_midnight_json(self):
+        """A 20:00-04:00 window keeps events on both sides of midnight and drops
+        the daytime one, in the JSON formatter too (#29 review)."""
+        utc = datetime.timezone.utc
+        events = [
+            TideEvent(time=datetime.datetime(2026, 4, 15, 1, 30, tzinfo=utc), height=0.5),
+            TideEvent(time=datetime.datetime(2026, 4, 15, 12, 0, tzinfo=utc), height=1.2),
+            TideEvent(time=datetime.datetime(2026, 4, 15, 22, 15, tzinfo=utc), height=-0.3),
+        ]
+        result = TideResult(
+            coordinate=Coordinate(lat=40.7128, lon=-74.0060),
+            source_type=Source.NOAA,
+            station_id="8518750",
+            station_name="The Battery",
+            station_distance_km=1.2,
+            model_name=None,
+            days=[TideDay(date=datetime.date(2026, 4, 15), events=events)],
+        )
+        between = (datetime.time(20, 0), datetime.time(4, 0))
+        data = json_module.loads(
+            format_json(result, feet=False, precision=1, local=False, between=between)
+        )
+        assert [t["time"] for t in data["days"][0]["tides"]] == ["01:30", "22:15"]
+
     def test_between_filters_events_json(self):
         events = [
             TideEvent(
