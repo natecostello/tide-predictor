@@ -3,7 +3,7 @@ import sys
 
 import httpx
 
-from tides.cache import get_stations
+from tides.cache import StationDatabaseError, get_stations
 from tides.models import Coordinate, Source, TideDay, TideEvent, TideResult
 from tides.noaa import (
     DERIVED_DATUMS,
@@ -348,11 +348,14 @@ def resolve_tides(
 
     # AUTO: try NOAA API first (most accurate for US), then global station
     # database (harmonic prediction), then model fallback. A NOAA station that
-    # cannot serve the requested datum, or a NOAA API/network failure while
-    # fetching predictions or station datums, falls through to the next source
-    # instead of failing the whole request. (Station-list fetch failures are
-    # handled separately, see #16.)
-    stations = get_stations()
+    # cannot serve the requested datum, or a NOAA API/network failure (station
+    # list, predictions or station datums), falls through to the next source
+    # instead of failing the whole request.
+    try:
+        stations = get_stations()
+    except httpx.HTTPError as e:
+        _note_fallthrough(f"NOAA station list unavailable ({type(e).__name__})", "other sources")
+        stations = []
     try:
         noaa_result = _resolve_noaa(coord, begin_date, end_date, stations, datum, tz=tz)
     except NOAAError as e:
@@ -364,7 +367,11 @@ def resolve_tides(
     if noaa_result is not None:
         return _apply_datum(noaa_result, datum, model_name)
 
-    station_resolved = _resolve_station(coord, begin_date, end_date, tz=tz)
+    try:
+        station_resolved = _resolve_station(coord, begin_date, end_date, tz=tz)
+    except (StationDatabaseError, httpx.HTTPError) as e:
+        _note_fallthrough(str(e) or type(e).__name__, "the tidal model")
+        station_resolved = None
     if station_resolved is not None:
         result, station = station_resolved
         return _apply_datum(result, datum, model_name, station=station)

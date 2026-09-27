@@ -51,6 +51,8 @@ Follow these principles in all CLI work:
 - Provide actionable guidance in error messages
 - Errors go to stderr
 - Exit code 1 for user errors, 2 for data/network errors
+- Unexpected exceptions print `Error: unexpected <Type> ...: <message>`; `TIDES_DEBUG=1` adds the traceback
+- In `auto` mode, a failing source (NOAA API, NOAA station list, GitHub station DB) falls through to the next one with a stderr note; explicit `--source` reports the error
 
 ### Arguments and Flags
 - Provide both short and long flag forms (e.g. `-d`/`--date`)

@@ -455,11 +455,45 @@ class TestCLIInvocation:
         assert result.exit_code == 2
 
     @patch("tides.resolver.resolve_tides")
-    def test_generic_exception(self, mock_resolve):
+    def test_generic_exception(self, mock_resolve, monkeypatch):
+        monkeypatch.delenv("TIDES_DEBUG", raising=False)
         mock_resolve.side_effect = RuntimeError("boom")
         result = runner.invoke(app, ["get", "40.7,-74.0"])
         assert result.exit_code == 2
-        assert "boom" not in result.output
+        assert "unexpected RuntimeError" in result.output
+        assert "boom" in result.output
+        assert "Traceback" not in result.output
+
+    @patch("tides.resolver.resolve_tides")
+    def test_debug_env_prints_traceback(self, mock_resolve, monkeypatch):
+        monkeypatch.setenv("TIDES_DEBUG", "1")
+        mock_resolve.side_effect = KeyError("x")
+        result = runner.invoke(app, ["get", "40.7,-74.0"])
+        assert result.exit_code == 2
+        assert "unexpected KeyError" in result.output
+        assert "Traceback" in result.output
+
+    @patch("tides.resolver.resolve_tides")
+    def test_station_database_error_names_github(self, mock_resolve):
+        from tides.cache import StationDatabaseError
+
+        mock_resolve.side_effect = StationDatabaseError(
+            "Could not download the global tide station database from GitHub (HTTPStatusError)"
+        )
+        result = runner.invoke(app, ["get", "40.7,-74.0", "--source", "station"])
+        assert result.exit_code == 2
+        assert "GitHub" in result.output
+        assert "NOAA" not in result.output
+
+    @patch("tides.resolver.resolve_tides")
+    def test_http_status_error_names_host(self, mock_resolve):
+        req = httpx.Request("GET", "https://api.tidesandcurrents.noaa.gov/x")
+        mock_resolve.side_effect = httpx.HTTPStatusError(
+            "503", request=req, response=httpx.Response(503, request=req)
+        )
+        result = runner.invoke(app, ["get", "40.7,-74.0"])
+        assert result.exit_code == 2
+        assert "api.tidesandcurrents.noaa.gov returned HTTP 503" in result.output
 
 
 class TestModelFlag:
@@ -511,6 +545,7 @@ class TestFetchModelCommand:
         mock_fetch_all.side_effect = RuntimeError("unexpected")
         result = runner.invoke(app, ["fetch-model"])
         assert result.exit_code == 2
+        assert "unexpected RuntimeError" in result.output
 
 
 class TestCacheShowCommand:

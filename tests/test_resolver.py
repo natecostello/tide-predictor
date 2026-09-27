@@ -476,3 +476,78 @@ class TestAutoResolution:
         )
         assert result.source_type == Source.STATION
         mock_station.assert_called_once()
+
+
+class TestOfflineAuto:
+    """#16: network failures in auto mode fall through instead of exiting."""
+
+    def _model_result(self):
+        return TideResult(
+            coordinate=Coordinate(lat=37.8, lon=-122.47),
+            source_type=Source.MODEL,
+            station_id=None,
+            station_name=None,
+            station_distance_km=None,
+            model_name="GOT5.6",
+            days=[TideDay(date=datetime.date(2026, 4, 15), events=SAMPLE_NOAA_EVENTS)],
+        )
+
+    @patch("tides.resolver._resolve_model")
+    @patch("tides.resolver._resolve_station", return_value=None)
+    @patch("tides.resolver.get_stations")
+    def test_station_list_unreachable_falls_through(self, mock_get, _st, mock_model, capsys):
+        import httpx
+
+        mock_get.side_effect = httpx.ConnectError("offline")
+        mock_model.return_value = self._model_result()
+        result = resolve_tides(
+            Coordinate(lat=37.8, lon=-122.47),
+            datetime.date(2026, 4, 15),
+            datetime.date(2026, 4, 15),
+            datum="msl",
+        )
+        assert result.source_type == Source.MODEL
+        assert "NOAA station list unavailable" in capsys.readouterr().err
+
+    @patch("tides.resolver._resolve_model")
+    @patch("tides.resolver._resolve_station")
+    @patch("tides.resolver.get_stations", return_value=[])
+    def test_station_db_unavailable_falls_through_in_auto(self, _g, mock_st, mock_model, capsys):
+        from tides.cache import StationDatabaseError
+
+        mock_st.side_effect = StationDatabaseError("Could not download ... from GitHub")
+        mock_model.return_value = self._model_result()
+        result = resolve_tides(
+            Coordinate(lat=37.8, lon=-122.47),
+            datetime.date(2026, 4, 15),
+            datetime.date(2026, 4, 15),
+            datum="msl",
+        )
+        assert result.source_type == Source.MODEL
+        assert "GitHub" in capsys.readouterr().err
+
+    @patch("tides.resolver._resolve_station")
+    def test_station_db_unavailable_propagates_for_station_source(self, mock_st):
+        from tides.cache import StationDatabaseError
+
+        mock_st.side_effect = StationDatabaseError("GitHub")
+        with pytest.raises(StationDatabaseError):
+            resolve_tides(
+                Coordinate(lat=37.8, lon=-122.47),
+                datetime.date(2026, 4, 15),
+                datetime.date(2026, 4, 15),
+                Source.STATION,
+                datum="msl",
+            )
+
+    @patch("tides.resolver._resolve_model", side_effect=SystemExit(2))
+    @patch("tides.resolver._resolve_station", return_value=None)
+    @patch("tides.resolver.get_stations", return_value=[])
+    def test_deliberate_exits_still_propagate(self, *_):
+        with pytest.raises(SystemExit):
+            resolve_tides(
+                Coordinate(lat=37.8, lon=-122.47),
+                datetime.date(2026, 4, 15),
+                datetime.date(2026, 4, 15),
+                datum="msl",
+            )

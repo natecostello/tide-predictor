@@ -4,6 +4,7 @@ import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import httpx
 import pytest
 
 from tides.cache import (
@@ -289,22 +290,105 @@ class TestGetStations:
 
 
 class TestFetchAll:
-    def test_calls_fetch_station_data_and_ensure_model_data(self):
-        with patch("tides.cache.fetch_station_data") as mock_fetch:
-            with patch("tides.cache.ensure_model_data") as mock_ensure:
-                with patch("tides.cache.print"):
-                    fetch_all()
-                    mock_fetch.assert_called_once()
-                    mock_ensure.assert_called_once()
+    def _run(self, index_exists: bool, model_exists: bool, tmp_path, content: str = "[]"):
+        index = tmp_path / "station_index.json"
+        if index_exists:
+            index.write_text(content)
+        with (
+            patch("tides.cache.fetch_station_data", return_value=[{"id": "1"}]) as fetch,
+            patch("tides.stations._get_index_path", return_value=index),
+            patch("tides.stations.get_station_index") as get_index,
+            patch("tides.cache._model_exists", return_value=model_exists),
+            patch("tides.cache.ensure_model_data") as ensure,
+        ):
+            fetch_all()
+        return fetch, get_index, ensure
 
-    def test_prints_status_messages(self, capsys):
-        with patch("tides.cache.fetch_station_data"):
-            with patch("tides.cache.ensure_model_data"):
-                fetch_all()
-                captured = capsys.readouterr()
-                assert "Fetching NOAA station list" in captured.err
-                assert "GOT5.6" in captured.err
-                assert "Done" in captured.err
+    def test_fetches_all_three_when_missing(self, tmp_path, capsys):
+        fetch, get_index, ensure = self._run(False, False, tmp_path)
+        fetch.assert_called_once()
+        get_index.assert_called_once()
+        ensure.assert_called_once_with("GOT5.6")
+        err = capsys.readouterr().err
+        assert "NOAA station list: updated (1 stations)" in err
+        assert "Done" in err
+
+    def test_already_present_items_are_skipped(self, tmp_path, capsys):
+        fetch, get_index, ensure = self._run(True, True, tmp_path)
+        fetch.assert_called_once()  # NOAA list always refreshed
+        get_index.assert_called_once()  # validates; no download for a valid index
+        ensure.assert_not_called()
+        err = capsys.readouterr().err
+        assert "Station database: already present" in err
+        assert "GOT5.6 model: already present" in err
+        assert "Downloading" not in err
+
+    @pytest.mark.parametrize("content", ["{truncated", "{}", '[{"id": "1"}]'])
+    def test_invalid_index_is_repaired_not_reported_present(self, tmp_path, capsys, content):
+        """Real get_station_index(): an invalid index (corrupt, wrong shape or
+        missing keys) triggers repair; only the download itself is mocked."""
+        stations_dir = tmp_path / "stations"
+        stations_dir.mkdir()
+        index = stations_dir / "station_index.json"
+        index.write_text(content)
+
+        def fake_download():
+            index.write_text(
+                json.dumps(
+                    [{"id": "9", "name": "x", "lat": 1.0, "lon": 2.0, "file": "noaa/9.json"}]
+                )
+            )
+
+        with (
+            patch("tides.cache.fetch_station_data", return_value=[]),
+            patch("tides.stations._get_stations_dir", return_value=stations_dir),
+            patch("tides.stations.download_station_database", side_effect=fake_download) as dl,
+            patch("tides.cache._model_exists", return_value=True),
+        ):
+            fetch_all()
+        dl.assert_called_once()
+        assert json.loads(index.read_text())[0]["id"] == "9"
+        assert "Station database: already present" not in capsys.readouterr().err
+
+    def test_invalid_index_rebuilt_from_disk_without_download(self, tmp_path, capsys):
+        from tides.stations import get_station_index
+
+        stations_dir = tmp_path / "stations"
+        (stations_dir / "noaa").mkdir(parents=True)
+        (stations_dir / "noaa" / "5.json").write_text(
+            json.dumps({"name": "S", "latitude": 1.0, "longitude": 2.0})
+        )
+        (stations_dir / "station_index.json").write_text("{}")
+        with (
+            patch("tides.stations._get_stations_dir", return_value=stations_dir),
+            patch("tides.stations.download_station_database") as dl,
+        ):
+            index = get_station_index()
+        dl.assert_not_called()
+        assert index[0]["id"] == "5"
+        assert "index rebuilt from 1 cached station files" in capsys.readouterr().err
+
+
+class TestStaleStationCache:
+    def test_stale_cache_used_when_refresh_fails(self, capsys):
+        stale = [{"id": "old"}]
+        with (
+            patch("tides.cache.is_station_cache_fresh", return_value=False),
+            patch("tides.cache.fetch_station_data", side_effect=httpx.ConnectError("offline")),
+            patch("tides.cache.load_station_cache", return_value=stale),
+            patch("tides.cache._station_cache_age_days", return_value=45),
+        ):
+            assert get_stations() == stale
+        assert "using station list cached 45 days ago" in capsys.readouterr().err
+
+    def test_no_cache_and_offline_raises(self):
+        with (
+            patch("tides.cache.is_station_cache_fresh", return_value=False),
+            patch("tides.cache.fetch_station_data", side_effect=httpx.ConnectError("offline")),
+            patch("tides.cache.load_station_cache", return_value=None),
+            pytest.raises(httpx.ConnectError),
+        ):
+            get_stations()
 
 
 class TestFormatSize:

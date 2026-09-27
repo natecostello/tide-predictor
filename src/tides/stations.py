@@ -10,6 +10,7 @@ import sys
 from collections.abc import Iterator
 from pathlib import Path
 
+from tides.cache import StationDatabaseError
 from tides.harmonics import predict_tides_range
 from tides.models import Coordinate, TideEvent
 from tides.noaa import haversine_km
@@ -185,19 +186,15 @@ def download_station_database() -> None:
     print("Downloading global tide station database (~50MB)...", file=sys.stderr)
 
     try:
-        response_ctx = httpx.stream("GET", archive_url, timeout=120, follow_redirects=True)
-    except (httpx.ConnectError, httpx.TimeoutException) as e:
-        print(
-            "Error: Could not download station database. Check your internet connection.",
-            file=sys.stderr,
-        )
-        raise SystemExit(2) from e
-
-    with response_ctx as response:
-        response.raise_for_status()
-        data = io.BytesIO()
-        for chunk in response.iter_bytes():
-            data.write(chunk)
+        with httpx.stream("GET", archive_url, timeout=120, follow_redirects=True) as response:
+            response.raise_for_status()
+            data = io.BytesIO()
+            for chunk in response.iter_bytes():
+                data.write(chunk)
+    except httpx.HTTPError as e:
+        raise StationDatabaseError(
+            f"Could not download the global tide station database from GitHub ({type(e).__name__})"
+        ) from e
 
     data.seek(0)
     with zipfile.ZipFile(data) as zf:
@@ -225,14 +222,46 @@ def download_station_database() -> None:
     print(f"Station database ready: {len(index)} stations.", file=sys.stderr)
 
 
+_INDEX_KEYS = ("id", "lat", "lon", "file")
+
+
+def load_valid_index(index_path: Path) -> list[dict] | None:
+    """Parse the station index; None unless it is a list of usable entries."""
+    try:
+        data = json.loads(index_path.read_text())
+    except (OSError, json.JSONDecodeError, ValueError):
+        return None
+    if not isinstance(data, list):
+        return None
+    if not all(isinstance(e, dict) and all(k in e for k in _INDEX_KEYS) for e in data):
+        return None
+    return data
+
+
 def get_station_index() -> list[dict]:
-    """Get the station index, downloading if needed."""
+    """Get the station index, repairing or downloading it if needed.
+
+    A missing or invalid index is rebuilt from station files already on disk
+    when possible (no network); otherwise the database is downloaded.
+    """
     index_path = _get_index_path()
-    if index_path.exists():
-        try:
-            return json.loads(index_path.read_text())
-        except (json.JSONDecodeError, ValueError):
-            index_path.unlink(missing_ok=True)
+    index = load_valid_index(index_path)
+    if index is not None:
+        return index
+
+    index_path.unlink(missing_ok=True)
+    stations_dir = _get_stations_dir()
+    rebuilt = build_station_index(stations_dir)
+    if rebuilt:
+        index_path.write_text(json.dumps(rebuilt))
+        print(
+            f"Station database: index rebuilt from {len(rebuilt)} cached station files.",
+            file=sys.stderr,
+        )
+        return rebuilt
 
     download_station_database()
-    return json.loads(index_path.read_text())
+    index = load_valid_index(index_path)
+    if index is None:
+        raise StationDatabaseError("Downloaded station database index is invalid")
+    return index

@@ -48,6 +48,8 @@ Controlled by `--source` flag:
 
 > **Amended 2026-09-27 (#12):** `auto` now tries NOAA, then the global station database, then the model. A NOAA station that cannot serve the requested `--datum` (subordinate stations publish MLLW only), or a NOAA API/network failure while fetching predictions or station datums, falls through to the next source with a stderr note instead of failing. `--source noaa` still reports the error (exit 2).
 
+> **Amended 2026-09-27 (#16):** the fall-through also covers the NOAA station-list fetch (a stale cached list is reused with a warning when a refresh fails) and the GitHub station-database download (auto falls through to the model). Explicit `--source` values report these errors (exit 2), naming the service that actually failed.
+
 ### NOAA CO-OPS API
 
 - Free, no authentication required
@@ -160,13 +162,13 @@ The `timezone` field reflects the actual timezone used: `"UTC"` by default, or t
 
 ### `tides fetch-model`
 
-Pre-downloads the GOT5.6 tidal model data and NOAA station metadata to the local cache. Useful for offline preparation.
+Pre-downloads everything a query needs offline: the NOAA station list (always refreshed), the global tide station database (a missing or invalid index is rebuilt from on-disk station files if possible, otherwise downloaded) and the GOT5.6 model (downloaded only if missing). Amended 2026-09-27 (#16); originally GOT5.6 and NOAA metadata only.
 
 ```
 tides fetch-model
 ```
 
-Displays download progress. If data already exists and is current, reports that.
+Displays download progress and one status line per item: the station database reports "already present", "index rebuilt from N cached station files", or its download progress; GOT5.6 reports "already present" or its download.
 
 ## Data Management
 
@@ -187,7 +189,8 @@ Displays download progress. If data already exists and is current, reports that.
 | No NOAA station in range (with `--source noaa`) | "No NOAA tide station found within 25km of this location." |
 | Invalid coordinate format | "Could not parse coordinates. Expected: lat,lon (e.g. 40.7128,-74.0060)" |
 | Invalid date format | "Invalid date format. Expected: YYYY-MM-DD or YYYY-MM-DD:YYYY-MM-DD" |
-| Network error during data fetch | "Could not download tidal data. Check your internet connection." |
+| Network error during data fetch | Names the failing service (amended 2026-09-27, #16): "Could not connect to <host>. Check your internet connection.", "<host> returned HTTP <code>. ...", or "Could not download the global tide station database from GitHub (...)". In `auto` mode these fall through to the next source instead. |
+| Unexpected internal error | "unexpected <Type> ...: <message>"; `TIDES_DEBUG=1` adds the traceback |
 | NaN/invalid results from model | "No tidal data for this location — it may be inland." |
 
 All errors go to stderr. Exit code 1 for user errors, 2 for data/network errors.

@@ -168,6 +168,27 @@ def parse_between(between_str: str | None) -> tuple[datetime.time, datetime.time
     return start, end
 
 
+def _url_host(exc: Exception) -> str:
+    """Host an httpx error was talking to, for accurate error messages."""
+    try:
+        return exc.request.url.host or "the data service"
+    except (AttributeError, RuntimeError):
+        return "the data service"
+
+
+def _report_unexpected(exc: Exception, context: str) -> None:
+    """Catch-all reporting: exception type and message; traceback with
+    TIDES_DEBUG=1. Keeps real bugs diagnosable without raw tracebacks by default."""
+    import os
+    import traceback
+
+    print(f"Error: unexpected {type(exc).__name__} {context}: {exc}", file=sys.stderr)
+    if os.environ.get("TIDES_DEBUG") == "1":
+        traceback.print_exception(exc, file=sys.stderr)
+    else:
+        print("Set TIDES_DEBUG=1 for a traceback.", file=sys.stderr)
+
+
 def _finite_height(height: float) -> float:
     """Refuse to render NaN/inf heights (they would print as 'nan' or produce
     invalid JSON)."""
@@ -365,6 +386,7 @@ def get(
         )
         raise SystemExit(1)
 
+    from tides.cache import StationDatabaseError
     from tides.datums import DatumUnavailableError
     from tides.noaa import NOAAError
     from tides.resolver import resolve_tides
@@ -391,23 +413,24 @@ def get(
     except NOAAError as e:
         print(f"Error: {e}", file=sys.stderr)
         raise SystemExit(2)
-    except httpx.HTTPStatusError:
+    except StationDatabaseError as e:
+        print(f"Error: {e}. Check your internet connection.", file=sys.stderr)
+        raise SystemExit(2)
+    except httpx.HTTPStatusError as e:
         print(
-            "Error: Could not fetch tide data from NOAA. The service may be unavailable.",
+            f"Error: {_url_host(e)} returned HTTP {e.response.status_code}. "
+            "The service may be unavailable.",
             file=sys.stderr,
         )
         raise SystemExit(2)
-    except (httpx.ConnectError, httpx.TimeoutException):
+    except (httpx.ConnectError, httpx.TimeoutException) as e:
         print(
-            "Error: Could not connect to tide data service. Check your internet connection.",
+            f"Error: Could not connect to {_url_host(e)}. Check your internet connection.",
             file=sys.stderr,
         )
         raise SystemExit(2)
-    except Exception:
-        print(
-            "Error: An unexpected error occurred while fetching tide data.",
-            file=sys.stderr,
-        )
+    except Exception as e:
+        _report_unexpected(e, "while fetching tide data")
         raise SystemExit(2)
 
     try:
@@ -424,28 +447,33 @@ def get(
 
 @app.command("fetch-model")
 def fetch_model() -> None:
-    """Pre-download tidal model data and station metadata."""
-    from tides.cache import fetch_all
+    """Pre-download everything needed offline: always refreshes the NOAA
+    station list, and downloads the global station database and the GOT5.6
+    model only if not already present."""
+    from tides.cache import StationDatabaseError, fetch_all
 
     try:
         fetch_all()
-    except (httpx.ConnectError, httpx.TimeoutException):
+    except SystemExit:
+        raise
+    except StationDatabaseError as e:
+        print(f"Error: {e}. Check your internet connection.", file=sys.stderr)
+        raise SystemExit(2)
+    except (httpx.ConnectError, httpx.TimeoutException) as e:
         print(
-            "Error: Could not connect to data service. Check your internet connection.",
+            f"Error: Could not connect to {_url_host(e)}. Check your internet connection.",
             file=sys.stderr,
         )
         raise SystemExit(2)
-    except httpx.HTTPStatusError:
+    except httpx.HTTPStatusError as e:
         print(
-            "Error: Data service returned an error. Please try again later.",
+            f"Error: {_url_host(e)} returned HTTP {e.response.status_code}. "
+            "Please try again later.",
             file=sys.stderr,
         )
         raise SystemExit(2)
-    except Exception:
-        print(
-            "Error: Could not download tidal data.",
-            file=sys.stderr,
-        )
+    except Exception as e:
+        _report_unexpected(e, "while downloading tidal data")
         raise SystemExit(2)
 
 
