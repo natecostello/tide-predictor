@@ -1,10 +1,12 @@
 """Tests for tidal datum computation and lookup."""
 
+import datetime
 import json
 import os
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import numpy as np
+import pytest
 
 from tides.datums import (
     Datum,
@@ -137,40 +139,76 @@ class TestGridKey:
 
 
 class TestComputeDatumsFromModel:
-    @patch("pyTMD.predict.infer_minor")
-    @patch("pyTMD.predict.time_series")
-    @patch("pyTMD.io.model")
-    @patch("tides.cache.ensure_model_data")
-    def test_returns_all_datum_keys(self, mock_ensure, mock_model_cls, mock_predict, mock_infer):
-        from tides.datums import compute_datums_from_model
+    def test_samples_6min_over_epoch_and_returns_all_keys(self):
+        from tides.datums import DATUM_INTERVAL_MINUTES, compute_datums_from_model
 
-        mock_instance = MagicMock()
-        mock_model_cls.return_value = mock_instance
-        mock_instance.corrections = "GOT"
-        mock_instance.format = "GOT-netcdf"
+        seen = []
 
-        mock_ds = MagicMock()
-        mock_instance.open_dataset.return_value = mock_ds
-        mock_local = MagicMock()
-        mock_ds.tmd.interp.return_value = mock_local
+        def fake_predict(t, local, model):
+            seen.append(t)
+            return np.sin(2 * np.pi * t / (12.4206 / 24))
 
-        # Simulate 19 years of hourly tidal data
-        n = int(19 * 365.25 * 24)
-        t_arr = np.linspace(0, 19 * 365.25, n)
-        tide_values = np.sin(2 * np.pi * t_arr / (12.42 / 24))
+        with (
+            patch("tides.ocean_model.load_local_constituents", return_value=(None, None)),
+            patch("tides.ocean_model.predict_elevations", side_effect=fake_predict),
+        ):
+            result = compute_datums_from_model(-3.717, -38.483, "GOT5.6")
 
-        mock_result = MagicMock()
-        mock_result.values = tide_values
-        mock_predict.return_value = tide_values
-
-        mock_infer.return_value = np.zeros(n)
-
-        result = compute_datums_from_model(-3.717, -38.483, "GOT5.6")
+        t = np.concatenate(seen)
+        assert DATUM_INTERVAL_MINUTES == 6.0
+        assert len(t) == 6940 * 240  # 6,940 days, end-exclusive at 2022-01-01
+        assert np.allclose(np.diff(t), 6 / 1440)
+        assert t[0] == (datetime.date(2003, 1, 1) - datetime.date(1992, 1, 1)).days
+        assert len(seen) == 19  # one chunk per year
         for key in ("lat", "mllw", "mlw", "msl", "mtl", "mhw", "mhhw", "hat"):
             assert key in result
         assert result["msl"] == 0.0
-        assert result["hat"] > 0
-        assert result["lat"] < 0
+        assert result["hat"] > 0 > result["lat"]
+
+
+class TestExtractDatumsMethod:
+    """#13: vectorized, tidal-day MHHW/MLLW at 6-minute sampling."""
+
+    @staticmethod
+    def _mixed_tide(years: float = 19.0, interval_min: float = 6.0) -> np.ndarray:
+        t = np.arange(0, years * 365.25 * 24, interval_min / 60.0)  # hours
+        periods = np.array([12.4206012, 23.9344696, 25.8193417])  # M2, K1, O1
+        amps = np.array([1.0, 0.4, 0.3])
+        w = 2 * np.pi / periods
+        return (amps[:, None] * np.cos(w[:, None] * t + np.array([0.0, 0.0, 1.0])[:, None])).sum(
+            axis=0
+        )
+
+    def test_long_run_mean_is_zero(self):
+        # Informational: a harmonic series has no Z0, so MSL = 0 by definition.
+        assert abs(float(np.mean(self._mixed_tide()))) < 0.005
+
+    def test_mixed_tide_datums_match_brute_force(self):
+        e = self._mixed_tide()
+        d = _extract_datums(e, 6.0)
+        # Brute-force reference: explicit per-tidal-day loop.
+        from scipy.signal import find_peaks
+
+        hi, _ = find_peaks(e, distance=20)
+        lo, _ = find_peaks(-e, distance=20)
+        spd = 24.8412 * 10
+        nbins = int(len(e) // spd)
+        hh = [e[hi[(hi // spd) == b]].max() for b in range(nbins) if np.any((hi // spd) == b)]
+        ll = [e[lo[(lo // spd) == b]].min() for b in range(nbins) if np.any((lo // spd) == b)]
+        assert d["mhhw"] == pytest.approx(np.mean(hh), abs=0.01)
+        assert d["mllw"] == pytest.approx(np.mean(ll), abs=0.01)
+        assert d["mhw"] == pytest.approx(np.mean(e[hi]), abs=0.01)
+        assert d["mlw"] == pytest.approx(np.mean(e[lo]), abs=0.01)
+        assert d["hat"] >= d["mhhw"] > d["mhw"] > 0 > d["mlw"] > d["mllw"] >= d["lat"]
+
+    def test_fast_on_19_years_at_6_minutes(self):
+        import time
+
+        e = self._mixed_tide()
+        _extract_datums(e[:10000], 6.0)  # warm scipy import
+        start = time.perf_counter()
+        _extract_datums(e, 6.0)
+        assert time.perf_counter() - start < 1.0
 
 
 class TestGetModelDatums:
@@ -180,10 +218,25 @@ class TestGetModelDatums:
             cache_dir.mkdir(parents=True)
             key = _grid_key(40.7, -74.0, "GOT5.6")
             cached = {key: {"mllw": -0.5, "mhw": 0.4, "msl": 0.0}}
-            (cache_dir / "got5.6.json").write_text(json.dumps(cached))
+            (cache_dir / "got5.6.v2.json").write_text(json.dumps(cached))
 
             result = get_model_datums(40.7, -74.0, "GOT5.6")
             assert result["mllw"] == -0.5
+
+    def test_ignores_pre_v2_cache_file(self, tmp_path):
+        with patch.dict(os.environ, {"XDG_CACHE_HOME": str(tmp_path)}):
+            cache_dir = tmp_path / "tides" / "datums"
+            cache_dir.mkdir(parents=True)
+            key = _grid_key(40.7, -74.0, "GOT5.6")
+            (cache_dir / "got5.6.json").write_text(json.dumps({key: {"mllw": -9.9}}))
+            fresh = {"mllw": -0.6, "msl": 0.0}
+            with patch("tides.datums.compute_datums_from_model", return_value=fresh) as comp:
+                result = get_model_datums(40.7, -74.0, "GOT5.6")
+            comp.assert_called_once()
+            assert result["mllw"] == -0.6
+            assert (cache_dir / "got5.6.v2.json").exists()
+            # Old file left in place (never deleted by code).
+            assert json.loads((cache_dir / "got5.6.json").read_text())[key]["mllw"] == -9.9
 
     def test_computes_when_not_cached(self, tmp_path):
         with patch.dict(os.environ, {"XDG_CACHE_HOME": str(tmp_path)}):
@@ -193,7 +246,7 @@ class TestGetModelDatums:
                 assert result["mllw"] == -0.6
 
             # Verify it was cached
-            cache_file = tmp_path / "tides" / "datums" / "got5.6.json"
+            cache_file = tmp_path / "tides" / "datums" / "got5.6.v2.json"
             assert cache_file.exists()
             cache = json.loads(cache_file.read_text())
             key = _grid_key(40.7, -74.0, "GOT5.6")
@@ -203,7 +256,7 @@ class TestGetModelDatums:
         with patch.dict(os.environ, {"XDG_CACHE_HOME": str(tmp_path)}):
             cache_dir = tmp_path / "tides" / "datums"
             cache_dir.mkdir(parents=True)
-            (cache_dir / "got5.6.json").write_text("not json!!!")
+            (cache_dir / "got5.6.v2.json").write_text("not json!!!")
 
             mock_datums = {"mllw": -0.6, "msl": 0.0}
             with patch("tides.datums.compute_datums_from_model", return_value=mock_datums):

@@ -14,10 +14,7 @@ import pyTMD.constituents
 import xarray as xr
 
 from tides.models import TideEvent
-from tides.ocean_model import ELEVATION_INTERVAL_MINUTES, find_extrema
-
-# Reference epoch for pyTMD: 1992-01-01T00:00:00 UTC
-_PYTMD_EPOCH = datetime.datetime(1992, 1, 1, tzinfo=datetime.timezone.utc)
+from tides.ocean_model import ELEVATION_INTERVAL_MINUTES, find_extrema, utc_minutes
 
 # Correction type for station harmonic constants.
 # OTIS uses the standard Doodson/IHO astronomical argument conventions,
@@ -105,14 +102,7 @@ def predict_tides_for_day(
     start = datetime.datetime(date.year, date.month, date.day, tzinfo=datetime.timezone.utc)
     end = start + datetime.timedelta(days=1)
 
-    times = []
-    current = start
-    while current < end:
-        times.append(current)
-        current += datetime.timedelta(minutes=ELEVATION_INTERVAL_MINUTES)
-
-    # Days since 1992-01-01 (pyTMD's epoch)
-    t = np.array([(dt - _PYTMD_EPOCH).total_seconds() / 86400.0 for dt in times])
+    t, times = utc_minutes(start, end, ELEVATION_INTERVAL_MINUTES)
 
     tide = pyTMD.predict.time_series(t, ds, corrections=STATION_CORRECTIONS)
     minor = pyTMD.predict.infer_minor(t, ds, corrections=STATION_CORRECTIONS)

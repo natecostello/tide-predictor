@@ -2,9 +2,15 @@ import datetime
 from unittest.mock import MagicMock, patch
 
 import numpy as np
+import pytest
 
 from tides.models import Coordinate
-from tides.ocean_model import ELEVATION_INTERVAL_MINUTES, compute_tides, find_extrema
+from tides.ocean_model import (
+    ELEVATION_INTERVAL_MINUTES,
+    compute_tides,
+    crosses_seam,
+    find_extrema,
+)
 
 
 class TestFindExtrema:
@@ -251,17 +257,26 @@ class TestComputeTides:
     @patch("pyTMD.predict.time_series")
     @patch("pyTMD.io.model")
     @patch("tides.cache.ensure_model_data")
-    def test_compute_tides_antimeridian_skips_crop(
+    def test_compute_tides_seam_crops_with_signed_bounds(
         self, mock_ensure, mock_model_cls, mock_predict, mock_infer
     ):
-        """Near-prime-meridian coordinates where lon360-pad < 0 should skip crop."""
+        """Windows crossing the 0/360 seam must still crop (never load the full
+        grid): GOT-format crops use a west bound < 0, which pyTMD wraps."""
         self._setup_pytmd_mocks(mock_ensure, mock_model_cls, mock_predict, mock_infer)
-        # lon=0.5 -> lon360=0.5, lon_min=-1.5 -> crosses_antimeridian=True
-        coord = Coordinate(lat=0.0, lon=0.5)
-        compute_tides(coord, datetime.date(2025, 12, 3), datetime.date(2025, 12, 3))
-        mock_instance = mock_model_cls.return_value
-        _, kwargs = mock_instance.open_dataset.call_args
-        assert kwargs.get("crop") is False
+        mock_model_cls.return_value.format = "GOT-netcdf"
+        for lon, expected_x in [(0.5, 0.5), (-0.5, -0.5)]:
+            compute_tides(
+                Coordinate(lat=0.0, lon=lon),
+                datetime.date(2025, 12, 3),
+                datetime.date(2025, 12, 3),
+            )
+            mock_instance = mock_model_cls.return_value
+            _, kwargs = mock_instance.open_dataset.call_args
+            assert kwargs.get("crop") is True
+            assert kwargs["bounds"][0] == pytest.approx(expected_x - 2.0)
+            assert kwargs["bounds"][1] == pytest.approx(expected_x + 2.0)
+            _, ikw = mock_instance.open_dataset.return_value.tmd.interp.call_args
+            assert ikw["x"] == pytest.approx(expected_x)
 
     @patch("pyTMD.predict.infer_minor")
     @patch("pyTMD.predict.time_series")
@@ -293,3 +308,52 @@ class TestComputeTides:
         heights = [e.height for e in events]
         assert any(h > 0.5 for h in heights), "Expected at least one high tide"
         assert any(h < -0.5 for h in heights), "Expected at least one low tide"
+
+
+class TestSeam:
+    @pytest.mark.parametrize(
+        ("lon360", "expected"), [(0.1, True), (359.9, True), (179.9, False), (180.1, False)]
+    )
+    def test_crosses_seam(self, lon360, expected):
+        assert crosses_seam(lon360) is expected
+
+    def test_fes_seam_concat_is_strictly_increasing(self):
+        """FES-format grids include both x=0 and x=360; the seam crop must not
+        duplicate x=0 after shifting the western slice by -360."""
+        import xarray as xr
+
+        from tides import ocean_model
+
+        x = np.arange(0.0, 360.0 + 0.125, 0.125)
+        y = np.arange(40.0, 60.0 + 0.125, 0.125)
+        grid = xr.Dataset(
+            {"m2": (("y", "x"), np.ones((len(y), len(x)), dtype=np.complex64))},
+            coords={"x": x, "y": y},
+        )
+        captured = {}
+
+        class FakeAccessor:
+            def __init__(self, ds):
+                self.ds = ds
+
+            def interp(self, **kw):
+                captured["ds"] = self.ds
+                captured["kw"] = kw
+                return self.ds
+
+        mock_model = MagicMock()
+        mock_model.format = "FES-netcdf"
+        mock_model.open_dataset.return_value = grid
+        with (
+            patch("tides.cache.ensure_model_data"),
+            patch("pyTMD.io.model", return_value=mock_model),
+            patch.object(
+                xr.Dataset, "tmd", property(lambda self: FakeAccessor(self)), create=True
+            ),
+        ):
+            ocean_model.load_local_constituents(50.0, -0.1, "EOT20")
+
+        xs = captured["ds"].x.values
+        assert np.all(np.diff(xs) > 0)
+        assert xs.min() >= -2.0 and xs.max() <= 2.0
+        assert captured["kw"]["x"] == pytest.approx(-0.1)
