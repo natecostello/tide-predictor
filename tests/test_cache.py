@@ -644,6 +644,43 @@ class TestEot20Marker:
             cache._fetch_eot20()  # looks in the real dir, not the override
         stream.assert_not_called()
 
+    def test_missing_inner_archive_is_not_marked_complete(self, tmp_path, monkeypatch):
+        import io
+        import zipfile
+
+        from tides import cache
+
+        pytmd = tmp_path / "pytmd"
+        monkeypatch.setattr("tides.cache._get_pytmd_data_dir", lambda: pytmd)
+        # Outer archive with only ocean_tides.zip (load_tides.zip missing).
+        inner = io.BytesIO()
+        with zipfile.ZipFile(inner, "w") as z:
+            z.writestr("ocean_tides/M2.nc", b"x")
+        outer = io.BytesIO()
+        with zipfile.ZipFile(outer, "w") as z:
+            z.writestr("ocean_tides.zip", inner.getvalue())
+
+        class FakeResponse:
+            headers = {}
+
+            def raise_for_status(self):
+                pass
+
+            def iter_bytes(self, chunk_size=None):
+                yield outer.getvalue()
+
+        class FakeStream:
+            def __enter__(self):
+                return FakeResponse()
+
+            def __exit__(self, *a):
+                return False
+
+        with patch("httpx.stream", return_value=FakeStream()):
+            with pytest.raises(OSError, match="load_tides.zip"):
+                cache._fetch_eot20()
+        assert not (pytmd / "EOT20" / cache.EOT20_COMPLETE_MARKER).exists()
+
 
 class TestNetworkGuard:
     """The conftest autouse guard blocks inet sockets but not AF_UNIX."""

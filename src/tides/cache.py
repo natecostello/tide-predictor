@@ -189,12 +189,16 @@ def _fetch_eot20() -> None:
 
         # SEANOE archive contains inner ZIPs (ocean_tides.zip, load_tides.zip)
         eot_base.mkdir(exist_ok=True)
-        for inner_name in ["ocean_tides.zip", "load_tides.zip"]:
+        inner_names = ["ocean_tides.zip", "load_tides.zip"]
+        missing = [n for n in inner_names if not (data_dir / n).exists()]
+        if missing:
+            # A truncated or malformed download: never mark it complete.
+            raise OSError(f"EOT20 archive is incomplete (missing {', '.join(missing)})")
+        for inner_name in inner_names:
             inner_path = data_dir / inner_name
-            if inner_path.exists():
-                with zipfile.ZipFile(inner_path) as inner_zf:
-                    inner_zf.extractall(eot_base)
-                inner_path.unlink()
+            with zipfile.ZipFile(inner_path) as inner_zf:
+                inner_zf.extractall(eot_base)
+            inner_path.unlink()
 
         (eot_base / EOT20_COMPLETE_MARKER).write_text("ok\n")
         print("EOT20 download complete.", file=sys.stderr)
