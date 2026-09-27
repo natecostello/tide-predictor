@@ -19,6 +19,11 @@ from tides.ocean_model import ELEVATION_INTERVAL_MINUTES, find_extrema, utc_minu
 # Correction type for station harmonic constants.
 # OTIS uses the standard Doodson/IHO astronomical argument conventions,
 # which match how NOAA and IHO-sourced harmonic constants are analyzed.
+# KNOWN LIMITATION (tracked in #15): pyTMD's OTIS branch zeroes constituents
+# outside its fixed ~33-constituent table, and infer_minor double-counts on
+# top of complete station analyses (~3.7 cm vs ~1.8 cm RMS at Golden Gate).
+# #15 switches to GOT without infer_minor and bumps the station datum cache
+# version, so datums cached with this setting are never reused afterwards.
 STATION_CORRECTIONS = "OTIS"
 
 # Map station constituent names to pyTMD's expected names.
