@@ -264,10 +264,10 @@ class TestDownloadStationDatabase:
     def test_download_connection_error(self, tmp_path):
         import httpx
 
+        from tides.cache import StationDatabaseError
         from tides.stations import download_station_database
 
         with patch("tides.stations._get_stations_dir", return_value=tmp_path):
             with patch("httpx.stream", side_effect=httpx.ConnectError("fail")):
-                with pytest.raises(SystemExit) as exc_info:
+                with pytest.raises(StationDatabaseError, match="GitHub"):
                     download_station_database()
-                assert exc_info.value.code == 2

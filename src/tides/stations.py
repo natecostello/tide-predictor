@@ -10,6 +10,7 @@ import sys
 from collections.abc import Iterator
 from pathlib import Path
 
+from tides.cache import StationDatabaseError
 from tides.harmonics import predict_tides_range
 from tides.models import Coordinate, TideEvent
 from tides.noaa import haversine_km
@@ -185,19 +186,15 @@ def download_station_database() -> None:
     print("Downloading global tide station database (~50MB)...", file=sys.stderr)
 
     try:
-        response_ctx = httpx.stream("GET", archive_url, timeout=120, follow_redirects=True)
-    except (httpx.ConnectError, httpx.TimeoutException) as e:
-        print(
-            "Error: Could not download station database. Check your internet connection.",
-            file=sys.stderr,
-        )
-        raise SystemExit(2) from e
-
-    with response_ctx as response:
-        response.raise_for_status()
-        data = io.BytesIO()
-        for chunk in response.iter_bytes():
-            data.write(chunk)
+        with httpx.stream("GET", archive_url, timeout=120, follow_redirects=True) as response:
+            response.raise_for_status()
+            data = io.BytesIO()
+            for chunk in response.iter_bytes():
+                data.write(chunk)
+    except httpx.HTTPError as e:
+        raise StationDatabaseError(
+            f"Could not download the global tide station database from GitHub ({type(e).__name__})"
+        ) from e
 
     data.seek(0)
     with zipfile.ZipFile(data) as zf:

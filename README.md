@@ -46,7 +46,8 @@ tides get -8.05,-34.87 --source model
 # Use FES2022 model (34 constituents, must be pre-downloaded)
 tides get 35.9,-75.6 --source model --model fes2022
 
-# Pre-download model data
+# Pre-download everything needed offline (NOAA station list, global station
+# database, GOT5.6); items already present are skipped
 tides fetch-model
 
 # View cache sizes
@@ -90,6 +91,16 @@ negative-coordinate tokens so Click does not parse them as option flags.
 **FES2022** (global, `--model fes2022`): FES2022b ocean tide model with 34 tidal constituents. Highest fidelity available. Must be manually downloaded from [AVISO](https://www.aviso.altimetry.fr/en/data/products/auxiliary-products/global-tide-fes.html) (~5GB on disk).
 
 **Global station database** (~8,289 stations): Harmonic predictions from the openwatersio/tide-database. Auto-selected when within 200km in `auto` source mode, or via `--source station`.
+
+## Offline use and errors
+
+After `tides fetch-model`, queries work offline: if NOAA or GitHub is unreachable, `auto` mode falls through to the cached station database and then the model, with a one-line note on stderr. A NOAA station list older than 30 days is reused (with a warning) when it cannot be refreshed.
+
+Unexpected errors print the exception type and message. Set `TIDES_DEBUG=1` to also print the full traceback:
+
+```bash
+TIDES_DEBUG=1 tides get 40.7128,-74.0060
+```
 
 ## Development
 

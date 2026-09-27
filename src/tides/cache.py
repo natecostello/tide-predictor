@@ -7,6 +7,11 @@ from pathlib import Path
 STATION_CACHE_FILENAME = "noaa_stations.json"
 STATION_CACHE_MAX_AGE_DAYS = 30
 
+
+class StationDatabaseError(Exception):
+    """The global tide station database (GitHub) could not be downloaded."""
+
+
 # Models that can be cleared from the pyTMD cache.
 # Maps user-facing name -> directory name under pytmd cache.
 PYTMD_MODEL_DIRS: dict[str, str] = {
@@ -194,19 +199,59 @@ def fetch_station_data() -> list[dict]:
     return stations
 
 
+def _station_cache_age_days() -> int:
+    import datetime
+
+    mtime = datetime.datetime.fromtimestamp(
+        get_station_cache_path().stat().st_mtime, tz=datetime.timezone.utc
+    )
+    return (datetime.datetime.now(tz=datetime.timezone.utc) - mtime).days
+
+
 def get_stations() -> list[dict]:
+    """NOAA station list: fresh cache, else refetch.
+
+    If the refresh fails (offline, NOAA down) and a stale cache exists, use the
+    stale list with a warning rather than failing; the stale file is never
+    deleted. Only raises when there is no cache at all.
+    """
+    import httpx
+
     if is_station_cache_fresh():
         cached = load_station_cache()
         if cached is not None:
             return cached
-    return fetch_station_data()
+    try:
+        return fetch_station_data()
+    except httpx.HTTPError as e:
+        stale = load_station_cache()
+        if stale is None:
+            raise
+        print(
+            f"Warning: using station list cached {_station_cache_age_days()} days ago "
+            f"(refresh failed: {type(e).__name__})",
+            file=sys.stderr,
+        )
+        return stale
 
 
 def fetch_all() -> None:
-    print("Fetching NOAA station list...", file=sys.stderr)
-    fetch_station_data()
-    print("Downloading GOT5.6 tidal model (this may take a while)...", file=sys.stderr)
-    ensure_model_data()
+    """Pre-fetch everything a query can need: NOAA list, station DB, GOT5.6."""
+    from tides.stations import _get_index_path, get_station_index
+
+    stations = fetch_station_data()
+    print(f"NOAA station list: updated ({len(stations)} stations)", file=sys.stderr)
+
+    if _get_index_path().exists():
+        print("Station database: already present", file=sys.stderr)
+    else:
+        get_station_index()  # downloads and reports progress itself
+
+    if _model_exists("GOT5.6"):
+        print("GOT5.6 model: already present", file=sys.stderr)
+    else:
+        ensure_model_data("GOT5.6")  # prints its own download message
+
     print("Done. All data cached.", file=sys.stderr)
 
 
