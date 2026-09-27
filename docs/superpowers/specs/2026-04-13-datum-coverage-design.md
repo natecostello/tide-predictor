@@ -23,6 +23,8 @@ Computes tidal datums (LAT, MLLW, MLW, MSL, MHW, MHHW, HAT) from either station 
 
 **Caching**: store computed model datums at `~/.cache/tides/datums/{model}.json`, keyed by coordinate rounded to model grid resolution (1/16° for FES2022, 0.5° for GOT5.6). Entries never expire.
 
+> **Amended 2026-09-27 (#13):** the model path now predicts at 6-minute intervals over 2003-01-01 to 2022-01-01 (end exclusive, yearly chunks), takes MHHW/MLLW per tidal day (24.8412 h) rather than per calendar day, and is vectorized (~10 ms extraction). MSL stays 0 by definition (the harmonic series has no Z0). The cache file is versioned (`{model}.v2.json`).
+
 **Performance**: ~2s per new coordinate (model load + 166K hourly predictions). Cached lookups are instant.
 
 ### CLI changes
