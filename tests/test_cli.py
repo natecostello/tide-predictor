@@ -52,7 +52,7 @@ class TestParseCoordinate:
             model_name="GOT5.6",
             days=[],
         )
-        result = runner.invoke(app, ["get", "40.7 -74.0", "-d", "2026-09-28"])
+        result = runner.invoke(app, ["peaks", "40.7 -74.0", "-d", "2026-09-28"])
         assert result.exit_code == 0
         coord = mock_resolve.call_args.args[0]
         assert (coord.lat, coord.lon) == (40.7, -74.0)
@@ -78,25 +78,29 @@ class TestParseCoordinate:
 
 class TestEscapeNegativeCoords:
     def test_negative_coord_gets_space(self):
-        assert _escape_negative_coords(["get", "-2.88,-39.91"]) == ["get", " -2.88,-39.91"]
+        assert _escape_negative_coords(["peaks", "-2.88,-39.91"]) == ["peaks", " -2.88,-39.91"]
 
     def test_positive_coord_unchanged(self):
-        assert _escape_negative_coords(["get", "40.71,-74.00"]) == ["get", "40.71,-74.00"]
+        assert _escape_negative_coords(["peaks", "40.71,-74.00"]) == ["peaks", "40.71,-74.00"]
 
     def test_option_flag_unchanged(self):
-        assert _escape_negative_coords(["get", "--date", "2026-04-15"]) == [
-            "get",
+        assert _escape_negative_coords(["peaks", "--date", "2026-04-15"]) == [
+            "peaks",
             "--date",
             "2026-04-15",
         ]
 
     def test_short_flag_unchanged(self):
-        assert _escape_negative_coords(["get", "-d", "2026-04-15"]) == ["get", "-d", "2026-04-15"]
+        assert _escape_negative_coords(["peaks", "-d", "2026-04-15"]) == [
+            "peaks",
+            "-d",
+            "2026-04-15",
+        ]
 
     def test_negative_coord_among_options(self):
-        argv = ["get", "-2.88,-39.91", "--date", "2025-12-03", "--feet", "--local"]
+        argv = ["peaks", "-2.88,-39.91", "--date", "2025-12-03", "--feet", "--local"]
         assert _escape_negative_coords(argv) == [
-            "get",
+            "peaks",
             " -2.88,-39.91",
             "--date",
             "2025-12-03",
@@ -495,7 +499,7 @@ class TestCLIInvocation:
         assert "Usage" in result.output
         assert "Missing command" not in result.output
 
-    @pytest.mark.parametrize("argv", [["-h"], ["get", "-h"], ["cache", "-h"], ["--help"]])
+    @pytest.mark.parametrize("argv", [["-h"], ["peaks", "-h"], ["cache", "-h"], ["--help"]])
     def test_short_help_flag(self, argv):
         result = runner.invoke(app, argv)
         assert result.exit_code == 0
@@ -512,24 +516,24 @@ class TestCLIInvocation:
         assert "App cache" in result.output
 
     def test_help_lists_choices(self):
-        result = runner.invoke(app, ["get", "--help"])
+        result = runner.invoke(app, ["peaks", "--help"])
         for word in ("got5.5", "got5.6", "eot20", "fes2022", "mhhw", "station"):
             assert word in result.output
 
     def test_invalid_source(self):
-        result = runner.invoke(app, ["get", "40.7,-74.0", "--source", "invalid"])
+        result = runner.invoke(app, ["peaks", "40.7,-74.0", "--source", "invalid"])
         assert result.exit_code == 1
         assert "Invalid source" in result.output
 
     def test_negative_precision(self):
-        result = runner.invoke(app, ["get", "40.7,-74.0", "--precision", "-1"])
+        result = runner.invoke(app, ["peaks", "40.7,-74.0", "--precision", "-1"])
         assert result.exit_code == 1
         assert "non-negative" in result.output
 
     @patch("tides.resolver.resolve_tides")
     def test_noaa_error_handling(self, mock_resolve):
         mock_resolve.side_effect = NOAAError("test")
-        result = runner.invoke(app, ["get", "40.7,-74.0"])
+        result = runner.invoke(app, ["peaks", "40.7,-74.0"])
         assert result.exit_code == 2
         assert "test" in result.output
 
@@ -538,20 +542,20 @@ class TestCLIInvocation:
         mock_resolve.side_effect = httpx.HTTPStatusError(
             "test", request=httpx.Request("GET", "http://test"), response=httpx.Response(500)
         )
-        result = runner.invoke(app, ["get", "40.7,-74.0"])
+        result = runner.invoke(app, ["peaks", "40.7,-74.0"])
         assert result.exit_code == 2
 
     @patch("tides.resolver.resolve_tides")
     def test_connection_error(self, mock_resolve):
         mock_resolve.side_effect = httpx.ConnectError("test")
-        result = runner.invoke(app, ["get", "40.7,-74.0"])
+        result = runner.invoke(app, ["peaks", "40.7,-74.0"])
         assert result.exit_code == 2
 
     @patch("tides.resolver.resolve_tides")
     def test_generic_exception(self, mock_resolve, monkeypatch):
         monkeypatch.delenv("TIDES_DEBUG", raising=False)
         mock_resolve.side_effect = RuntimeError("boom")
-        result = runner.invoke(app, ["get", "40.7,-74.0"])
+        result = runner.invoke(app, ["peaks", "40.7,-74.0"])
         assert result.exit_code == 2
         assert "unexpected RuntimeError" in result.output
         assert "boom" in result.output
@@ -561,7 +565,7 @@ class TestCLIInvocation:
     def test_debug_env_prints_traceback(self, mock_resolve, monkeypatch):
         monkeypatch.setenv("TIDES_DEBUG", "1")
         mock_resolve.side_effect = KeyError("x")
-        result = runner.invoke(app, ["get", "40.7,-74.0"])
+        result = runner.invoke(app, ["peaks", "40.7,-74.0"])
         assert result.exit_code == 2
         assert "unexpected KeyError" in result.output
         assert "Traceback" in result.output
@@ -573,7 +577,7 @@ class TestCLIInvocation:
         mock_resolve.side_effect = StationDatabaseError(
             "Could not download the global tide station database from GitHub (HTTPStatusError)"
         )
-        result = runner.invoke(app, ["get", "40.7,-74.0", "--source", "station"])
+        result = runner.invoke(app, ["peaks", "40.7,-74.0", "--source", "station"])
         assert result.exit_code == 2
         assert "GitHub" in result.output
         assert "NOAA" not in result.output
@@ -584,7 +588,7 @@ class TestCLIInvocation:
         mock_resolve.side_effect = httpx.HTTPStatusError(
             "503", request=req, response=httpx.Response(503, request=req)
         )
-        result = runner.invoke(app, ["get", "40.7,-74.0"])
+        result = runner.invoke(app, ["peaks", "40.7,-74.0"])
         assert result.exit_code == 2
         assert "api.tidesandcurrents.noaa.gov returned HTTP 503" in result.output
 
@@ -601,13 +605,15 @@ class TestModelFlag:
             model_name="EOT20",
             days=[],
         )
-        result = runner.invoke(app, ["get", "40.7,-74.0", "--source", "model", "--model", "eot20"])
+        result = runner.invoke(
+            app, ["peaks", "40.7,-74.0", "--source", "model", "--model", "eot20"]
+        )
         assert result.exit_code == 0
         _, kwargs = mock_resolve.call_args
         assert kwargs.get("model_name") == "EOT20"
 
     def test_invalid_model_name(self):
-        result = runner.invoke(app, ["get", "40.7,-74.0", "--model", "INVALID"])
+        result = runner.invoke(app, ["peaks", "40.7,-74.0", "--model", "INVALID"])
         assert result.exit_code == 1
         assert "Invalid model" in result.output
 
@@ -771,7 +777,7 @@ class TestModelIgnoredNote:
     @patch("tides.resolver.resolve_tides")
     def test_note_when_explicit_model_unused(self, mock_resolve):
         mock_resolve.return_value = self._station_result()
-        result = runner.invoke(app, ["get", "3.0,-39.6", "-m", "fes2022"])
+        result = runner.invoke(app, ["peaks", "3.0,-39.6", "-m", "fes2022"])
         assert result.exit_code == 0
         assert "Note: --model FES2022 ignored" in result.stderr
         assert "station 'Fortaleza USCGS'" in result.stderr
@@ -780,13 +786,13 @@ class TestModelIgnoredNote:
     @patch("tides.resolver.resolve_tides")
     def test_no_note_without_explicit_model(self, mock_resolve):
         mock_resolve.return_value = self._station_result()
-        result = runner.invoke(app, ["get", "3.0,-39.6"])
+        result = runner.invoke(app, ["peaks", "3.0,-39.6"])
         assert "ignored" not in result.stderr
 
     @patch("tides.resolver.resolve_tides")
     def test_default_model_is_got56(self, mock_resolve):
         mock_resolve.return_value = self._station_result()
-        runner.invoke(app, ["get", "3.0,-39.6"])
+        runner.invoke(app, ["peaks", "3.0,-39.6"])
         assert mock_resolve.call_args.kwargs["model_name"] == "GOT5.6"
 
 
@@ -806,6 +812,6 @@ class TestNegativeCoordEscaping:
     def test_space_form_escaped(self):
         from tides.cli import _escape_negative_coords
 
-        assert _escape_negative_coords(["get", "-2.88 -39.91"]) == ["get", " -2.88 -39.91"]
-        assert _escape_negative_coords(["get", "-2.88,-39.91"]) == ["get", " -2.88,-39.91"]
+        assert _escape_negative_coords(["peaks", "-2.88 -39.91"]) == ["peaks", " -2.88 -39.91"]
+        assert _escape_negative_coords(["peaks", "-2.88,-39.91"]) == ["peaks", " -2.88,-39.91"]
         assert _escape_negative_coords(["-p", "3"]) == ["-p", "3"]

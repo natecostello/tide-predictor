@@ -36,6 +36,23 @@ class TideEvent:
 
 
 @dataclass
+class TidePoint(TideEvent):
+    """A height on the curve at one moment, for `level` and `when`.
+
+    `kind` is "high"/"low" at (or within tolerance of) a turn, otherwise
+    "rising"/"falling". `rate` is m/h (0.0 for high/low). `near` is the
+    near-turn window (from, to) for `when` rows reported as a turn.
+    """
+
+    rate: float = 0.0  # m/h
+    near: tuple[datetime.datetime, datetime.datetime] | None = None
+
+    @property
+    def rate_ft(self) -> float:
+        return self.rate * METERS_TO_FEET
+
+
+@dataclass
 class TideDay:
     date: datetime.date
     events: list[TideEvent]

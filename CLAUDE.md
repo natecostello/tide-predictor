@@ -14,7 +14,10 @@ A stateless CLI for tide predictions using NOAA station data and global tidal mo
 ## CLI Interface
 
 ```
-tides get <lat,lon> [--date DATE] [--local] [--feet] [--json] [--between HH:MM:HH:MM] [--precision N] [--source auto|noaa|station|model] [--model got5.6|got5.5|eot20|fes2022] [--datum mllw|mlw|msl|mtl|mhw|mhhw|lat|hat] [--verbose]
+tides peaks <lat,lon> [--date DATE] [--between HH:MM:HH:MM] [shared options]
+tides level <lat,lon> [--when now|HH:MM|YYYY-MM-DDTHH:MM]... [shared options]
+tides when  <lat,lon> --level H|now [--rising|--falling] [--date DATE] [--between HH:MM:HH:MM] [shared options]
+  shared options: [--local] [--feet] [--json] [--precision N] [--source auto|noaa|station|model] [--model got5.6|got5.5|eot20|fes2022] [--datum mllw|mlw|msl|mtl|mhw|mhhw|lat|hat] [--verbose]
 tides cache [--json]
 tides cache clear [stations|datums|got5.5|got5.6|eot20|fes2022|hamtide11] [--all|-a] [--yes]
 tides fetch-model
@@ -22,9 +25,9 @@ tides --version
 ```
 
 Coordinate accepts `lat,lon` (e.g. `40.7128,-74.0060`) or a single quoted token `"lat lon"`.
-`--date` ranges are limited to 366 days (inclusive). `-h`/`--help` work everywhere; bare
+`--date` accepts YYYY-MM-DD, `today`, `tomorrow` (display clock) and ranges, limited to 366 days (inclusive); `--when` and `--level` input is read on the display clock and in display units. `-h`/`--help` work everywhere; bare
 `tides` shows help (bare `tides cache` still shows cache info).
-Negative latitudes work directly (e.g. `tides get -2.88,-39.91`): the
+Negative latitudes work directly for every command (e.g. `tides peaks -2.88,-39.91`): the
 `main_entry` console script prepends a space to any bare `-lat,lon` token
 in `sys.argv` before invoking Typer, so Click does not parse it as an
 option flag. `parse_coordinate` already strips whitespace.
@@ -71,6 +74,7 @@ Follow these principles in all CLI work:
 
 ### Future-Proofing
 - Keep changes additive
+- Exception: `get` -> `peaks` (no alias) was a deliberate, owner-approved breaking change, shipped in 0.2.0
 - Encourage `--json` for scripting stability
 - Don't have catch-all subcommands
 
@@ -95,11 +99,12 @@ Follow these principles in all CLI work:
 ```
 src/tides/
 ├── __init__.py
-├── cli.py          # Typer app, argument parsing, output formatting
+├── cli.py          # Typer app (peaks/level/when/cache), argument parsing, output formatting
+├── curve.py        # HeightCurve: heights/rates on a 1-min grid; at, crossings, turns
 ├── models.py       # Data classes for tides, coordinates, etc.
 ├── noaa.py         # NOAA CO-OPS API client
 ├── ocean_model.py  # pyTMD wrapper, extrema finding
-├── resolver.py     # Source selection logic (auto/noaa/model)
+├── resolver.py     # Source selection (auto/noaa/station/model); resolve_tides, resolve_curve
 ├── cache.py        # XDG cache management, data downloads, cache info/clear
 ├── datums.py       # Tidal datum computation (LAT/MLLW/MHW/HAT) and caching
 ├── harmonics.py    # Station harmonic prediction via pyTMD

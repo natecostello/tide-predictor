@@ -221,7 +221,7 @@ class TestNoaaCli:
         from tides.cli import app
 
         result = CliRunner().invoke(
-            app, ["get", "40.7128,-74.0060", "--source", "noaa", "--datum", "msl"]
+            app, ["peaks", "40.7128,-74.0060", "--source", "noaa", "--datum", "msl"]
         )
         assert result.exit_code == 2
         assert "Error:" in result.output
