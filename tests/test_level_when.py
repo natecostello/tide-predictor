@@ -2,6 +2,7 @@
 
 import datetime
 import json
+import re
 from pathlib import Path
 from unittest.mock import patch
 
@@ -77,7 +78,8 @@ class TestRename:
     def test_help(self, cmd):
         r = _run(cmd, "-h")
         assert r.exit_code == 0
-        assert "--datum" in r.stdout
+        # Rich may color help (CI forces color), splitting "--datum".
+        assert "--datum" in re.sub(r"\x1b\[[0-9;]*m", "", r.stdout)
 
     def test_peaks_json_rate_is_additive(self, model):
         data = _json(_run("peaks", COORD, "-d", "2026-10-08", "-s", "model", "-j"))

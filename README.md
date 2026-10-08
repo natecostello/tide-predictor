@@ -106,9 +106,9 @@ search window is `--date` (default today), filtered by `--between`.
 - A number reports crossings in both directions; `--rising` / `--falling`
   keep one.
 - `--level now` reports crossings in the direction the tide is moving now,
-  so `--date tomorrow` answers "when tomorrow is it at this level, on the same
-  rising tide?". If now is at a high (or low), it reports that day's highs
-  (or lows) instead.
+  so `--date tomorrow` answers "when tomorrow is the water at this level,
+  moving the same way?" (on a semidiurnal coast, usually twice a day). If now
+  is at a high (or low), it reports that day's highs (or lows) instead.
 - A level within 0.03 m of a high or low is reported once as that turn, with
   the window in which the water stays within 0.03 m of the level:
   `10.4ft@15:15 high (near: 14:53-15:37)`. These rows ignore `--rising` /
@@ -118,7 +118,7 @@ search window is `--date` (default today), filtered by `--between`.
 
 ```
 $ tides when -2.8810722,-39.9083908 --level now --date tomorrow --local --feet --source model --datum lat
-6.7ft@13:03 rising +2.4ft/h
+6.7ft@00:41 rising +2.3ft/h, 6.7ft@13:04 rising +2.4ft/h
 
 $ tides when -2.8810722,-39.9083908 --level 6.7 --date tomorrow --local --feet --source model --datum lat
 6.7ft@00:40 rising +2.3ft/h, 6.7ft@06:20 falling -2.4ft/h, 6.7ft@13:03 rising +2.4ft/h, 6.7ft@18:41 falling -2.4ft/h

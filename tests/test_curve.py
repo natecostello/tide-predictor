@@ -95,6 +95,13 @@ class TestCrossings:
         pts = curve.crossings(0.0, START, _at(8))
         assert [(p.time, p.kind) for p in pts] == [(_at(2), "rising"), (_at(6), "falling")]
 
+    def test_flat_run_at_level_reported_once(self):
+        curve = HeightCurve(START, np.array([-1.0, 0.0, 0.0, 0.0, 1.0, 2.0]))
+        pts = curve.crossings(0.0, START, _at(6))
+        assert [(p.time, p.kind) for p in pts] == [(_at(1), "rising")]
+        # A window starting inside the run does not re-report it.
+        assert curve.crossings(0.0, _at(2), _at(6)) == []
+
     def test_half_open_window(self):
         heights = np.array([-1.0, 1.0, 3.0])
         curve = HeightCurve(START, heights)

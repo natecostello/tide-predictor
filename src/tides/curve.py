@@ -174,14 +174,21 @@ class HeightCurve:
         d = self.heights[lo:hi] - level_m
         if len(d) < 2:
             return []
-        hits = np.nonzero((d[:-1] == 0) | (d[:-1] * d[1:] < 0))[0]
+        # An exact hit counts only where a run of samples at the level begins
+        # (a flat run such as [-1, 0, 0, 1] is one crossing, not two).
+        prev = np.empty_like(d)
+        prev[0] = self.heights[lo - 1] - level_m if lo > 0 else np.nan
+        prev[1:] = d[:-1]
+        starts_run = (d == 0) & (prev != 0)
+        hits = np.nonzero(starts_run[:-1] | (d[:-1] * d[1:] < 0))[0]
         points = []
         for k in hits:
             i = lo + int(k)
             if d[k] == 0:
                 pos = float(i)
-                nxt = d[k + 1]
-                rising = nxt > 0 if nxt != 0 else self.rates[i] >= 0
+                # Typed by the first sample after the run that leaves the level.
+                after = d[k + 1 :][d[k + 1 :] != 0]
+                rising = after[0] > 0 if len(after) else self.rates[i] >= 0
             else:
                 pos = i + float(d[k] / (d[k] - d[k + 1]))
                 rising = d[k + 1] > d[k]
