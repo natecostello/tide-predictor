@@ -49,7 +49,7 @@ High-risk areas: datum conversion (each source has a different native datum), di
 
 ## Dependencies and Non-Obvious Relationships
 
-- `peaks` and `level` must report the same height at the same moment. Model and station paths both go through `resolver._datum_shift`, and station curves must apply `stations.station_chart_offset` first (as `predict_station_tides` does). NOAA paths never call `_datum_shift`: hilo and 6-minute series are both fetched in the target datum, with LAT/HAT shifted by `_noaa_derived_shift`; do not ask for a second shift on NOAA heights
+- `peaks` and `level` must report the same height at the same moment. Model and station paths both go through `resolver._datum_shift`, and station curves must apply `stations.station_chart_offset` first (as `predict_station_tides` does). NOAA heights are already in the target datum (`_datum_shift` returns 0.0 for NOAA; the `level` curve path skips it): hilo and 6-minute series are both fetched in the target datum, with LAT/HAT shifted by `_noaa_derived_shift`; do not ask for a second shift on NOAA heights
 - NOAA heights are fetched in the target datum (LAT/HAT derived from MLLW + published station datums) and are never shifted by model datums
 - NOAA subordinate (`type == "S"`) stations serve only MLLW and only hilo; `level`/`when` cannot use them (AUTO falls through, `--source noaa` errors)
 - `peaks` on NOAA uses the official `interval=hilo` product; `level`/`when` use `interval=6` linearly interpolated
