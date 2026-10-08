@@ -85,7 +85,11 @@ def fetch_predictions(
     begin_date: datetime.date,
     end_date: datetime.date,
     datum: str = "mllw",
+    interval: str = "hilo",
 ) -> dict:
+    """Raw datagetter predictions. `interval` is "hilo" (highs/lows) or "6"
+    (6-minute series; a single request spans well over a year, so no
+    chunking is needed for the 366-day cap)."""
     params = {
         "begin_date": begin_date.strftime("%Y%m%d"),
         "end_date": end_date.strftime("%Y%m%d"),
@@ -94,7 +98,7 @@ def fetch_predictions(
         "datum": datum.upper(),
         "units": "metric",
         "time_zone": "gmt",
-        "interval": "hilo",
+        "interval": interval,
         "format": "json",
         "application": "tides_cli",
     }
@@ -109,6 +113,10 @@ class NOAAError(Exception):
 
 class NOAADatumUnavailableError(NOAAError):
     """The chosen NOAA station does not publish the requested datum."""
+
+
+class NOAASubordinateError(NOAAError):
+    """The chosen NOAA station publishes only high/low predictions."""
 
 
 def fetch_station_datums(station_id: str) -> dict[str, float]:
@@ -142,7 +150,7 @@ def fetch_station_datums(station_id: str) -> dict[str, float]:
     return datums
 
 
-def parse_predictions_response(data: dict) -> list[TideEvent]:
+def _predictions(data: dict) -> list[dict]:
     # NOAA returns {"error": {"message": "..."}} on failure
     if "error" in data:
         msg = data["error"].get("message", "Unknown NOAA API error")
@@ -151,11 +159,26 @@ def parse_predictions_response(data: dict) -> list[TideEvent]:
     predictions = data.get("predictions")
     if predictions is None or len(predictions) == 0:
         raise NOAAError("NOAA returned no tide predictions for this station and date range.")
+    return predictions
+
+
+def _parse_time(t: str) -> datetime.datetime:
+    time = datetime.datetime.strptime(t, "%Y-%m-%d %H:%M")
+    return time.replace(tzinfo=datetime.timezone.utc)
+
+
+def parse_series_response(data: dict) -> tuple[list[datetime.datetime], list[float]]:
+    """(times, heights) from an interval=6 predictions response."""
+    predictions = _predictions(data)
+    return [_parse_time(p["t"]) for p in predictions], [float(p["v"]) for p in predictions]
+
+
+def parse_predictions_response(data: dict) -> list[TideEvent]:
+    predictions = _predictions(data)
 
     events = []
     for p in predictions:
-        time = datetime.datetime.strptime(p["t"], "%Y-%m-%d %H:%M")
-        time = time.replace(tzinfo=datetime.timezone.utc)
+        time = _parse_time(p["t"])
         height = float(p["v"])
         # NOAA hilo "type" is H/L, and at mixed-tide stations HH/LL plus
         # HL ("higher low", a low) / LH ("lower high", a high): the LAST letter

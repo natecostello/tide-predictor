@@ -131,6 +131,25 @@ def load_station(station_entry: dict) -> dict:
     return json.loads(path.read_text())
 
 
+def station_chart_offset(station: dict) -> float:
+    """Metres to add to MSL-relative harmonic heights to express them in
+    datums.station_heights_datum(station).
+
+    Shared by predict_station_tides and the height curve so both agree.
+    """
+    # Apply chart datum offset so heights are relative to the station's
+    # published datum (usually LAT or MLLW). Our harmonic prediction oscillates
+    # around 0 ~= MSL, so height_CD = height_MSL - (CD - MSL). When the chart
+    # datum is not a supported datum published relative to MSL (e.g. STND with
+    # no datums), heights stay MSL-relative; see datums.station_heights_datum.
+    from tides.datums import datums_from_station, station_heights_datum
+
+    heights_datum = station_heights_datum(station)
+    offsets = datums_from_station(station) or {}
+    datum_offset = -offsets.get(heights_datum, 0.0) if heights_datum != "msl" else 0.0
+    return datum_offset
+
+
 def predict_station_tides(
     station: dict,
     begin_date: datetime.date,
@@ -155,16 +174,7 @@ def predict_station_tides(
     if not constituents:
         return []
 
-    # Apply chart datum offset so heights are relative to the station's
-    # published datum (usually LAT or MLLW). Our harmonic prediction oscillates
-    # around 0 ~= MSL, so height_CD = height_MSL - (CD - MSL). When the chart
-    # datum is not a supported datum published relative to MSL (e.g. STND with
-    # no datums), heights stay MSL-relative; see datums.station_heights_datum.
-    from tides.datums import datums_from_station, station_heights_datum
-
-    heights_datum = station_heights_datum(station)
-    offsets = datums_from_station(station) or {}
-    datum_offset = -offsets.get(heights_datum, 0.0) if heights_datum != "msl" else 0.0
+    datum_offset = station_chart_offset(station)
 
     # One continuous (padded) series over the whole range, so extrema at UTC
     # day boundaries are not dropped between per-day predictions.

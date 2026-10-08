@@ -186,7 +186,7 @@ class TestStationDatums:
 class TestCli:
     def test_datum_unavailable_exits_2(self):
         with patch("tides.resolver.resolve_tides", side_effect=DatumUnavailableError("inland")):
-            r = runner.invoke(app, ["get", "38.2,-122.7", "--source", "model"])
+            r = runner.invoke(app, ["peaks", "38.2,-122.7", "--source", "model"])
         assert r.exit_code == 2
         assert "Error: inland" in r.output
         assert "nan" not in r.output.lower()
@@ -195,7 +195,7 @@ class TestCli:
     def test_non_finite_height_never_rendered(self, extra):
         bad = _result(Source.MODEL, height=math.nan)
         with patch("tides.resolver.resolve_tides", return_value=bad):
-            r = runner.invoke(app, ["get", "38.2,-122.7", *extra])
+            r = runner.invoke(app, ["peaks", "38.2,-122.7", *extra])
         assert r.exit_code == 2
         assert "nan" not in r.stdout.lower()
         assert "non-finite" in r.output

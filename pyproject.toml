@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "tides"
-version = "0.1.0"
+version = "0.2.0"
 description = "A CLI for tide predictions using NOAA station data and the GOT5.6 global tidal model"
 requires-python = ">=3.11"
 dependencies = [

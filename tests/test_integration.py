@@ -22,7 +22,7 @@ class TestNOAAIntegration:
                 sys.executable,
                 "-m",
                 "tides",
-                "get",
+                "peaks",
                 "40.7006,-74.0142",
                 "--date",
                 "2026-04-15",
@@ -46,7 +46,7 @@ class TestNOAAIntegration:
                 sys.executable,
                 "-m",
                 "tides",
-                "get",
+                "peaks",
                 "40.7006,-74.0142",
                 "--date",
                 "2026-04-15",
@@ -70,7 +70,7 @@ class TestModelIntegration:
                 sys.executable,
                 "-m",
                 "tides",
-                "get",
+                "peaks",
                 "-8.05,-34.87",
                 "--date",
                 "2026-04-15",
@@ -96,7 +96,7 @@ class TestCLIFlags:
                 sys.executable,
                 "-m",
                 "tides",
-                "get",
+                "peaks",
                 "40.7006,-74.0142",
                 "--date",
                 "2026-04-15",
@@ -119,7 +119,7 @@ class TestCLIFlags:
                 sys.executable,
                 "-m",
                 "tides",
-                "get",
+                "peaks",
                 "40.7006,-74.0142",
                 "--date",
                 "2026-04-15",
@@ -140,7 +140,7 @@ class TestCLIFlags:
                 sys.executable,
                 "-m",
                 "tides",
-                "get",
+                "peaks",
                 "40.7006,-74.0142",
                 "--date",
                 "2026-04-15:2026-04-16",
@@ -164,3 +164,41 @@ class TestCLIFlags:
         )
         assert result.returncode == 0
         assert "tides" in result.stdout
+
+
+def _tides(*args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        [sys.executable, "-m", "tides", *args],
+        capture_output=True,
+        text=True,
+        timeout=SUBPROCESS_TIMEOUT,
+    )
+
+
+class TestLevelWhenIntegration:
+    def test_noaa_level_at_hilo_time_is_turn(self):
+        """Live NOAA 6-minute series agrees with the official hilo product."""
+        peaks = _tides(
+            "peaks", "40.7006,-74.0142", "-d", "2026-04-15", "-s", "noaa", "-j", "-p", "3"
+        )
+        assert peaks.returncode == 0, peaks.stderr
+        rows = json.loads(peaks.stdout)["days"][0]["tides"]
+        whens = [a for r in rows for a in ("--when", r["datetime"][:16])]
+        level = _tides("level", "40.7006,-74.0142", *whens, "-s", "noaa", "-j", "-p", "3")
+        assert level.returncode == 0, level.stderr
+        got = json.loads(level.stdout)["days"][0]["tides"]
+        for a, b in zip(rows, got):
+            assert b["type"] == a["type"]
+            assert abs(b["height"] - a["height"]) < 0.02
+
+    def test_model_when_round_trip(self):
+        """Ilha do Guajiru on GOT5.6 (needs the model cache)."""
+        coord = "-2.8810722,-39.9083908"
+        base = ["--local", "--feet", "--source", "model", "--datum", "lat"]
+        r = _tides("when", coord, "--level", "6.7", "--date", "2026-10-09", *base)
+        assert r.returncode == 0, r.stderr
+        rows = r.stdout.strip().split(", ")
+        assert [row.split(" ")[1] for row in rows] == ["rising", "falling", "rising", "falling"]
+        r = _tides("when", coord, "--level", "11", "--date", "2026-10-09", *base)
+        assert r.returncode == 0 and r.stdout == ""
+        assert "Note: level 11.0ft not reached on 2026-10-09 (max " in r.stderr

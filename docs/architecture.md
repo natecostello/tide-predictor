@@ -2,18 +2,20 @@
 
 ## Overview
 
-`tides` is a stateless CLI that predicts high/low tides for any coastal coordinate. It uses a three-tier resolution strategy: NOAA API (US waters) > global harmonic stations (~8,300 worldwide) > gridded ocean models (global). All heights are converted to a user-selected datum (default: MLLW).
+`tides` is a stateless CLI that predicts high/low tides (`peaks`), the water height at a time (`level`) and the times the water reaches a height (`when`) for any coastal coordinate. It uses a three-tier resolution strategy: NOAA API (US waters) > global harmonic stations (~8,300 worldwide) > gridded ocean models (global). All heights are converted to a user-selected datum (default: MLLW).
 
 ## Data Flow
 
 ```
-User: tides get 40.7,-74.0 --feet --local
+User: tides peaks|level|when 40.7,-74.0 --feet --local
 
   cli.py          Parse args, validate
     |
   resolver.py     Pick data source (auto/noaa/station/model)
+    |               peaks: resolve_tides -> highs/lows
+    |               level/when: resolve_curve -> CurveSource + HeightCurve (curve.py)
     |
-    ├── noaa.py          NOAA API → hi/lo predictions (US, <25km)
+    ├── noaa.py          NOAA API → hi/lo predictions (peaks) or 6-min series (level/when) (US, <25km)
     ├── stations.py      Station harmonics → pyTMD prediction (global, <200km)
     │     └── harmonics.py   Build xarray Dataset → predict.time_series()
     └── ocean_model.py   Gridded model → pyTMD prediction (global fallback)
@@ -27,9 +29,15 @@ User: tides get 40.7,-74.0 --feet --local
 
 ### cli.py — Entry point
 
-Typer app with three subcommands: `get`, `cache`, `fetch-model`. Handles argument parsing, source/model/datum validation, error wrapping (no raw tracebacks), and output formatting. Two formatters: `format_plain` (default, `height@time` format) and `format_json` (structured with coordinate, source, datum, timezone metadata).
+Typer app with subcommands `peaks`, `level`, `when`, `cache` and `fetch-model` (`get` was renamed to `peaks` in 0.2.0, with no alias). `peaks`, `level` and `when` share their options (`level` takes `--when` instead of `--date`/`--between`); `level` calls `HeightCurve.at`, and `when` calls `curve.search_level` (crossings plus near-turn handling) or, for `--level now` at a turn, `curve.turns_of_kind`. All notions of "now"/"today" come from `cli._now()`. Handles argument parsing, source/model/datum validation, error wrapping (no raw tracebacks), and output formatting. Two formatters: `format_plain` (default, `height@time` format) and `format_json` (structured with coordinate, source, datum, timezone metadata).
 
 The `tides` console script is wired to `main_entry`, a thin wrapper around the Typer app that rewrites `sys.argv` before dispatch: bare `lat,lon` tokens with a leading `-` (e.g. `-2.88,-39.91`) get a leading space prepended so Click does not parse them as option flags. `parse_coordinate` already strips whitespace, so this is transparent downstream. Bare negative numbers without a comma are left alone so legitimate negative-number option values still parse correctly.
+
+### curve.py — Shared height curve
+
+`HeightCurve` holds heights (metres, already in the requested datum) on a 1-minute UTC grid over a window padded by `EDGE_PAD`, plus the central finite-difference rate. Operations: `at(times)` (height, rate, and a `high`/`low` label when the point lies inside an adjacent turn's `TURN_TOLERANCE_M` window, otherwise `rising`/`falling`), `crossings(level, start, end, direction)` (sign changes refined by linear interpolation; an exact hit counts once) and `turns(start, end)` (`ocean_model.find_extrema` on the same samples). `search_level` reports a level within `TURN_TOLERANCE_M` (0.03 m) of a turn as one near-turn row with its near window instead of two falsely precise crossings, and reports the nearest extreme when a level is not reached.
+
+`resolver.resolve_curve` runs the same AUTO selection as `resolve_tides` once and returns a `CurveSource` (metadata plus a builder) and the first curve; further windows (e.g. `when --level now` far from `--date`) are built from the same source. NOAA curves come from the 6-minute predictions product (`interval=6`, linearly interpolated to 1 minute); subordinate stations publish no 6-minute series, so auto falls through and `--source noaa` errors. Model and station curves apply the same datum shift as `peaks` via `_datum_shift` (station curves first add `stations.station_chart_offset`), so `level` at a `peaks` time matches the `peaks` height.
 
 ### resolver.py — Source selection and datum conversion
 
@@ -38,7 +46,7 @@ The core routing logic. `resolve_tides()` tries sources in order for `auto` mode
 2. **Global station database** — if a station is within 200 km
 3. **Gridded model** — always available (fallback)
 
-After getting a result, `_apply_datum()` converts heights from the source's native datum to the requested datum. This is the trickiest part of the codebase because each source uses a different native datum:
+After getting a result, `_apply_datum()` (via `_datum_shift()`, shared with height curves) converts heights from the source's native datum to the requested datum. This is the trickiest part of the codebase because each source uses a different native datum:
 - **NOAA**: requested directly in the target datum (MLLW, MLW, MSL, MTL, MHW, MHHW). LAT/HAT are derived from MLLW predictions plus the station's published `datums.json`. NOAA heights are never shifted by model-derived datums. Subordinate ("S") stations publish MLLW only; in auto mode a station that cannot serve the datum, or a NOAA API/network failure (station list, predictions or station datums), falls through to the next source with a stderr note; likewise an unreachable GitHub station database falls through to the model
 - **Station**: heights relative to chart datum (LAT or MLLW, varies per station)
 - **Model**: heights relative to MSL (mean sea level)

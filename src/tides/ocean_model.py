@@ -85,7 +85,7 @@ def load_local_constituents(
 ) -> tuple["xr.Dataset", Any]:
     """Load a model and interpolate its constituents at (lat, lon).
 
-    Cached per process: a single `tides get` that also computes model datums
+    Cached per process: a single `tides peaks` that also computes model datums
     reuses the interpolated constituents instead of reloading the model.
     Callers must treat the returned objects as read-only.
 

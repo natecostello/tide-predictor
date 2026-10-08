@@ -131,7 +131,7 @@ class TestEmptyNotice:
     @patch("tides.resolver.resolve_tides")
     def test_plain_empty_prints_note_exit_0(self, mock_resolve):
         mock_resolve.return_value = _result(events=EVENTS)
-        r = runner.invoke(app, ["get", "40.7,-74.0", "-b", "04:30:05:00"])
+        r = runner.invoke(app, ["peaks", "40.7,-74.0", "-b", "04:30:05:00"])
         assert r.exit_code == 0
         assert r.stdout == ""
         assert "Note: no tide events matched" in r.stderr
@@ -139,7 +139,7 @@ class TestEmptyNotice:
     @patch("tides.resolver.resolve_tides")
     def test_json_empty_has_no_note(self, mock_resolve):
         mock_resolve.return_value = _result(events=EVENTS)
-        r = runner.invoke(app, ["get", "40.7,-74.0", "-b", "04:30:05:00", "-j"])
+        r = runner.invoke(app, ["peaks", "40.7,-74.0", "-b", "04:30:05:00", "-j"])
         assert r.exit_code == 0
         assert "Note" not in r.stderr
         assert json.loads(r.stdout)["days"][0]["tides"] == []
