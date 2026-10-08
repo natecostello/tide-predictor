@@ -93,6 +93,7 @@ Follow these principles in all CLI work:
 - `uv.lock` is committed; CI installs with `uv sync --locked`
 - Type hints on all public functions
 - Request a GitHub Copilot review upon submitting a PR
+- `.github/copilot-instructions.md` is the Copilot reviewer's repo context; refresh it with `/copilot-update` after changes to commands, architecture or conventions (do not edit it inline)
 
 ## Project Structure
 
