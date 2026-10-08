@@ -209,7 +209,17 @@ def parse_when(values: list[str] | None, tz: datetime.tzinfo) -> list[datetime.d
             )
             raise SystemExit(1)
         local_dt = datetime.datetime.combine(day, clock, tzinfo=tz)
-        out.append(local_dt.astimezone(datetime.timezone.utc))
+        utc_dt = local_dt.astimezone(datetime.timezone.utc)
+        if utc_dt.astimezone(tz).replace(tzinfo=None) != local_dt.replace(tzinfo=None):
+            # A wall time skipped by a daylight-saving change does not exist;
+            # never silently answer a different time.
+            print(
+                f"Error: --when '{raw}' does not exist on the display clock "
+                "(skipped by a daylight-saving change). Pick a time outside the gap.",
+                file=sys.stderr,
+            )
+            raise SystemExit(1)
+        out.append(utc_dt)
     return out
 
 
@@ -727,28 +737,78 @@ def level(
     _emit(result, feet, precision, local, None, verbose, json_output, True)
 
 
+def _offset_pieces(
+    start: datetime.datetime, end: datetime.datetime, tz: datetime.tzinfo
+) -> list[tuple[datetime.datetime, datetime.datetime, datetime.timedelta]]:
+    """Split UTC [start, end) where tz's UTC offset changes (DST), giving
+    (piece_start, piece_end, offset). Transitions fall on whole minutes."""
+    one = datetime.timedelta(minutes=1)
+
+    def off(t: datetime.datetime) -> datetime.timedelta:
+        return t.astimezone(tz).utcoffset() or datetime.timedelta(0)
+
+    pieces = []
+    while start < end:
+        first = off(start)
+        if off(end - one) == first:
+            pieces.append((start, end, first))
+            break
+        lo, hi = 0, int((end - start) / one) - 1  # off(lo) == first != off(hi)
+        while hi - lo > 1:
+            mid = (lo + hi) // 2
+            if off(start + one * mid) == first:
+                lo = mid
+            else:
+                hi = mid
+        split = start + one * hi
+        pieces.append((start, split, first))
+        start = split
+    return pieces
+
+
 def _day_segments(
     day: datetime.date,
     tz: datetime.tzinfo,
     between: tuple[datetime.time, datetime.time] | None,
 ) -> list[tuple[datetime.datetime, datetime.datetime]]:
     """The searched window for one display-clock day, as UTC [start, end)
-    intervals: the whole day, or the day intersected with --between (whose
-    end minute is inclusive, as for peaks)."""
+    intervals: every instant whose displayed date is `day` and, with
+    --between, whose displayed wall time is inside the window (end minute
+    inclusive, as for peaks). Built per UTC-offset piece of the day, so a
+    repeated fall-back hour is searched in both occurrences."""
     utc = datetime.timezone.utc
 
-    def at(d: datetime.date, t: datetime.time) -> datetime.datetime:
-        return datetime.datetime.combine(d, t, tzinfo=tz).astimezone(utc)
+    def first_instant(d: datetime.date) -> datetime.datetime:
+        return datetime.datetime.combine(d, datetime.time(0, 0), tzinfo=tz).astimezone(utc)
 
-    midnight = datetime.time(0, 0)
-    day_start, day_end = at(day, midnight), at(day + datetime.timedelta(days=1), midnight)
+    next_day = day + datetime.timedelta(days=1)
+    day_start, day_end = first_instant(day), first_instant(next_day)
     if between is None:
         return [(day_start, day_end)]
+
     one = datetime.timedelta(minutes=1)
     b_start, b_end = between
+    combine = datetime.datetime.combine
     if b_start <= b_end:
-        return [(at(day, b_start), min(at(day, b_end) + one, day_end))]
-    return [(day_start, at(day, b_end) + one), (at(day, b_start), day_end)]
+        walls = [(combine(day, b_start), combine(day, b_end) + one)]
+    else:
+        walls = [
+            (combine(day, datetime.time(0, 0)), combine(day, b_end) + one),
+            (combine(day, b_start), combine(next_day, datetime.time(0, 0))),
+        ]
+
+    segments = []
+    for p_start, p_end, offset in _offset_pieces(day_start, day_end, tz):
+        # Within a piece, wall time = UTC + offset (naive).
+        w_start = p_start.replace(tzinfo=None) + offset
+        w_end = p_end.replace(tzinfo=None) + offset
+        for lo, hi in walls:
+            s, e = max(lo, w_start), min(hi, w_end)
+            if s < e:
+                segments.append(
+                    ((s - offset).replace(tzinfo=utc), (e - offset).replace(tzinfo=utc))
+                )
+    return sorted(segments)
 
 
 @app.command(name="when")

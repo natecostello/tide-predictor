@@ -5,6 +5,7 @@ import json
 import re
 from pathlib import Path
 from unittest.mock import patch
+from zoneinfo import ZoneInfo
 
 import numpy as np
 import pytest
@@ -666,3 +667,69 @@ class TestLevelNow:
             np.array([(now - datetime.datetime(1992, 1, 1, tzinfo=UTC)).total_seconds() / 86400])
         )[0]
         assert seen and seen[0] == pytest.approx(h, abs=1e-9)
+
+
+NEW_YORK = ZoneInfo("America/New_York")
+
+
+class TestDaylightSaving:
+    def test_nonexistent_local_time_rejected(self, model):
+        # 2026-03-08 02:00-03:00 does not exist in New York.
+        r = _run("level", COORD, "-l", "-s", "model", "--when", "2026-03-08T02:30")
+        assert r.exit_code == 1
+        assert "does not exist on the display clock" in r.stderr
+        assert (
+            _run("level", COORD, "-l", "-s", "model", "--when", "2026-03-08T03:30").exit_code == 0
+        )
+
+    def test_ambiguous_local_time_accepted(self, model):
+        # 01:30 occurs twice on 2026-11-01; the first occurrence (EDT) is used.
+        rows = _rows(
+            _json(_run("level", COORD, "-l", "-s", "model", "-j", "--when", "2026-11-01T01:30"))
+        )
+        assert rows[0]["datetime"] == "2026-11-01T01:30-04:00"
+
+    def test_fall_back_between_covers_both_occurrences(self):
+        segs = cli._day_segments(
+            datetime.date(2026, 11, 1), NEW_YORK, (datetime.time(1, 0), datetime.time(1, 30))
+        )
+        assert segs == [
+            (
+                datetime.datetime(2026, 11, 1, 5, 0, tzinfo=UTC),
+                datetime.datetime(2026, 11, 1, 5, 31, tzinfo=UTC),
+            ),
+            (
+                datetime.datetime(2026, 11, 1, 6, 0, tzinfo=UTC),
+                datetime.datetime(2026, 11, 1, 6, 31, tzinfo=UTC),
+            ),
+        ]
+
+    def test_spring_forward_day_segments(self):
+        day = datetime.date(2026, 3, 8)
+        whole = cli._day_segments(day, NEW_YORK, None)
+        assert whole == [
+            (
+                datetime.datetime(2026, 3, 8, 5, tzinfo=UTC),
+                datetime.datetime(2026, 3, 9, 4, tzinfo=UTC),
+            )
+        ]
+        # 01:30-03:30 wall: 01:30-02:00 EST then 03:00-03:31 EDT.
+        segs = cli._day_segments(day, NEW_YORK, (datetime.time(1, 30), datetime.time(3, 30)))
+        assert segs == [
+            (
+                datetime.datetime(2026, 3, 8, 6, 30, tzinfo=UTC),
+                datetime.datetime(2026, 3, 8, 7, 0, tzinfo=UTC),
+            ),
+            (
+                datetime.datetime(2026, 3, 8, 7, 0, tzinfo=UTC),
+                datetime.datetime(2026, 3, 8, 7, 31, tzinfo=UTC),
+            ),
+        ]
+
+    def test_wrapping_between_utc(self):
+        segs = cli._day_segments(DAY, UTC, (datetime.time(20, 0), datetime.time(4, 0)))
+        start, end = _window(DAY)
+        assert segs == [
+            (start, start + datetime.timedelta(hours=4, minutes=1)),
+            (start + datetime.timedelta(hours=20), end),
+        ]
