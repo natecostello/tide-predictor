@@ -733,3 +733,28 @@ class TestDaylightSaving:
             (start, start + datetime.timedelta(hours=4, minutes=1)),
             (start + datetime.timedelta(hours=20), end),
         ]
+
+    def test_between_inside_spring_forward_gap_notes(self, model):
+        base = ["when", COORD, "-l", "-s", "model", "--level", "0", "-d", "2026-03-08"]
+        r = _run(*base, "-b", "02:15:02:30")
+        assert r.exit_code == 0 and r.stdout == ""
+        assert r.stderr.strip() == (
+            "Note: --between window does not occur on 2026-03-08 "
+            "(skipped by a daylight-saving change)"
+        )
+        r = _run(*base, "-b", "02:15:02:30", "-j")
+        assert r.stderr == ""
+        assert json.loads(r.stdout)["days"][0]["tides"] == []
+
+
+def test_when_reads_the_clock_once(model, monkeypatch):
+    # Crossing midnight between two reads must not mix days: _now is read once.
+    reads = iter(
+        [
+            datetime.datetime(2026, 10, 8, 23, 59, tzinfo=UTC),
+            datetime.datetime(2026, 10, 9, 0, 0, tzinfo=UTC),
+        ]
+    )
+    monkeypatch.setattr(cli, "_now", lambda: next(reads))
+    r = _run("when", COORD, "--level", "now", "-d", "today", "-s", "model", "-j")
+    assert _json(r)["days"][0]["date"] == "2026-10-08"

@@ -33,7 +33,7 @@ class HeightCurve:
         n = len(self.heights)
         self.rates = np.gradient(self.heights, _STEP_HOURS) if n > 1 else np.zeros(n)
         self._turns: list[tuple[int, str]] | None = None
-        self._tol_windows: dict[int, tuple[int, int]] = {}
+        self._tol_windows: dict[int, tuple[float, float]] = {}
 
     def __len__(self) -> int:
         return len(self.heights)
@@ -101,9 +101,11 @@ class HeightCurve:
             ]
         return self._turns
 
-    def _tol_window(self, idx: int) -> tuple[int, int]:
+    def _tol_window(self, idx: int) -> tuple[float, float]:
+        """Continuous (fractional-position) tolerance window of a turn, so a
+        time between samples is judged by the interpolated boundary."""
         if idx not in self._tol_windows:
-            self._tol_windows[idx] = self._window(idx, float(self.heights[idx]))
+            self._tol_windows[idx] = self._continuous_window(idx, float(self.heights[idx]))
         return self._tol_windows[idx]
 
     def turns(self, start: datetime.datetime, end: datetime.datetime) -> list[TidePoint]:

@@ -53,6 +53,17 @@ class TestAt:
         # The point keeps its own height, not the turn's.
         assert p.height != low.height
 
+    def test_fractional_time_uses_continuous_tolerance_bound(self):
+        curve = _cosine()
+        high = next(t for t in curve.turns(_at(60), _at(2000)) if t.kind == "high")
+        idx = round(curve._pos(high.time))
+        left, right = curve._tol_window(idx)
+        assert right != int(right)  # interpolated edge between samples
+        inside = curve._time(right - 0.01)
+        outside = curve._time(right + 0.01)
+        assert curve.at([inside])[0].kind == "high"
+        assert curve.at([outside])[0].kind == "falling"
+
     def test_outside_curve_raises(self):
         with pytest.raises(ValueError):
             _cosine(minutes=100).at([_at(500)])

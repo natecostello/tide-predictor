@@ -146,10 +146,11 @@ def parse_date_arg(
     date_str: str | None,
     coord: Coordinate | None = None,
     local: bool = False,
+    now: datetime.datetime | None = None,
 ) -> tuple[datetime.date, datetime.date]:
     # "Today" follows the display clock: local date at the coordinate with
-    # --local, UTC otherwise.
-    today = _now().astimezone(_display_tz(coord, local)).date()
+    # --local, UTC otherwise. `now` lets a command share one clock reading.
+    today = (now or _now()).astimezone(_display_tz(coord, local)).date()
     if date_str is None:
         return today, today
 
@@ -837,7 +838,10 @@ def when_cmd(
 
     coord = parse_coordinate([coordinate])
     tz = _display_tz(coord, local)
-    begin_date, end_date = parse_date_arg(date, coord, local)
+    # One clock reading for both the --date window and --level now, so a run
+    # that crosses midnight never mixes two days.
+    now = _now()
+    begin_date, end_date = parse_date_arg(date, coord, local, now)
     between_times = parse_between(between)
     target = parse_level(level_opt, feet)
     if rising and falling:
@@ -850,7 +854,6 @@ def when_cmd(
 
     display_tz = tz if local else None
     span_begin, span_end = begin_date, end_date
-    now = _now()
     if target == "now":
         # One curve covering now and the window when that fits the cap;
         # otherwise a second curve around now from the same source.
@@ -887,6 +890,16 @@ def when_cmd(
     days = []
     for d in _date_range(begin_date, end_date):
         segments = _day_segments(d, tz, between_times)
+        if not segments:
+            # --between lies entirely in a daylight-saving gap on this day.
+            if not json_output:
+                print(
+                    f"Note: --between window does not occur on {d} "
+                    "(skipped by a daylight-saving change)",
+                    file=sys.stderr,
+                )
+            days.append(TideDay(date=d, events=[]))
+            continue
         if turn_kind is not None:
             rows = turns_of_kind(curve, turn_kind, level_m, segments)
             if not rows and not json_output:
