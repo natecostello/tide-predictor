@@ -71,7 +71,7 @@ High-risk areas: datum conversion (each source has a different native datum), di
 - Source, config and CI files are ASCII-only (enforced in CI); Markdown is exempt
 - Errors to stderr; exit 1 for user input errors, 2 for data/network errors; options validated by hand (not Typer choices) so bad values exit 1
 - No raw tracebacks: expected errors are rewritten; unexpected ones print `Error: unexpected <Type> ...: <message>`
-- Notes about fallthrough or empty results go to stderr and are suppressed with `--json` where the JSON structure already carries the information
+- Notes go to stderr. AUTO fallthrough notes (`_note_fallthrough`) are always printed, `--json` included. Empty-result notes (no events matched, level not reached, no rising/falling crossings, no high/low on a day) are suppressed with `--json`, because the JSON keeps those days as `"tides": []`
 - New CLI options for `level`/`when` have no short flags; shared options keep identical names/short flags across `peaks`/`level`/`when`
 - Conventional commit prefixes (`feat:`, `fix:`, `feat!:` for breaking changes); PRs squash-merged with `(#N)`
 - Follow clig.dev guidelines (documented in CLAUDE.md)
