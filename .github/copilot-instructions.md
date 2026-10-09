@@ -49,7 +49,7 @@ High-risk areas: datum conversion (each source has a different native datum), di
 
 ## Dependencies and Non-Obvious Relationships
 
-- `peaks` and `level` must report the same height at the same moment. Model and station paths both go through `resolver._datum_shift`, and station curves must apply `stations.station_chart_offset` first (as `predict_station_tides` does). NOAA heights are already in the target datum (`_datum_shift` returns 0.0 for NOAA; the `level` curve path skips it): hilo and 6-minute series are both fetched in the target datum, with LAT/HAT shifted by `_noaa_derived_shift`; do not ask for a second shift on NOAA heights
+- `peaks` and `level` must use the same datum conversion. On model and station paths they report the same height at a `peaks` time (tests allow 0.005 m); on NOAA, `peaks` is the official hilo product and `level` interpolates the 6-minute series, so small differences are expected (the live test allows 0.02 m) and are not a datum bug. Model and station paths both go through `resolver._datum_shift`, and station curves must apply `stations.station_chart_offset` first (as `predict_station_tides` does). NOAA heights are already in the target datum (`_datum_shift` returns 0.0 for NOAA; the `level` curve path skips it): hilo and 6-minute series are both fetched in the target datum, with LAT/HAT shifted by `_noaa_derived_shift`; do not ask for a second shift on NOAA heights
 - NOAA heights are fetched in the target datum (LAT/HAT derived from MLLW + published station datums) and are never shifted by model datums
 - NOAA subordinate (`type == "S"`) stations serve only MLLW and only hilo; `level`/`when` cannot use them (AUTO falls through, `--source noaa` errors)
 - `peaks` on NOAA uses the official `interval=hilo` product; `level`/`when` use `interval=6` linearly interpolated
@@ -78,7 +78,7 @@ High-risk areas: datum conversion (each source has a different native datum), di
 
 ## Code Review Focus Areas
 
-- **Datum correctness** -- every height path (peaks, level, when) must land in the requested datum the same way; flag NaN/zero datum offsets, silent fallback to MSL, or model datums applied to NOAA heights
+- **Datum correctness** -- every height path (peaks, level, when) must land in the requested datum the same way; flag non-finite datum offsets, a missing datum silently defaulted to 0.0 (`_datum_shift` indexes offsets strictly instead of `.get(datum, 0.0)`), silent fallback to MSL, or model datums applied to NOAA heights. A 0.0 offset is valid by itself: MSL is 0.0 by definition, and converting to the source's native datum is a zero shift
 - **Display clock and DST** -- times read or grouped on the display clock (`--local`) must handle nonexistent (spring-forward) and repeated (fall-back) wall times; never use the machine's local timezone; "now" only via `cli._now()`, read once per command
 - **Window edges** -- extrema and crossings near day/range boundaries must not be lost or double-counted (padded windows, half-open `[start, end)` intervals)
 - **AUTO fallthrough** -- a failing source (NOAA API, station list, GitHub station DB, subordinate station) must fall through with a stderr note in `auto`, and report an error with explicit `--source`
