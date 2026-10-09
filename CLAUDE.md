@@ -93,6 +93,7 @@ Follow these principles in all CLI work:
 - `uv.lock` is committed; CI installs with `uv sync --locked`
 - Type hints on all public functions
 - Request a GitHub Copilot review upon submitting a PR
+- `.github/copilot-instructions.md` is the Copilot reviewer's repo context; refresh it after changes to commands, architecture or conventions with the maintainer's user-level Claude Code skill `/copilot-update` (it lives in `~/.claude/skills/`, not in this repo). Without that skill, audit every section against the code and bump both rev markers; do not patch single lines inline
 
 ## Project Structure
 
